@@ -1,0 +1,14 @@
+[Unit]
+Description=SyncTask Discord Bot (Alimi)
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/SyncTask
+ExecStart=/home/ubuntu/SyncTask/venv/bin/python main.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
