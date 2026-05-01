@@ -12,7 +12,6 @@ load_dotenv()
 class SyncTaskBot(commands.Bot):
     def __init__(self):
         intents = discord.Intents.default()
-        intents.members = True 
         super().__init__(command_prefix='!', intents=intents)
         self.db = None
         self.remove_command('help')
