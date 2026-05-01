@@ -58,25 +58,26 @@ class SyncTaskBot(commands.Bot):
             db_status = f"❌ DB 조회 에러: {e}"
             count = 0
             
+        print(f"\n{'='*60}")
         print(f"🚀 {self.user.name} 가동 완료 | {db_status}")
+        print(f"{'='*60}")
+        print("🌐 SyncTask Admin Dashboard is LIVE!")
+        print(f"🔗 URL: http://서버IP:10000")
+        print("🔑 Password: [PROTECTED] (Check your .env file)")
+        print(f"{'='*60}\n")
 
-        # 슈퍼 관리자(유저님) 찾기 및 DM 전송
+        # 슈퍼 관리자(유저님) 찾기 및 DM 전송 시도
         super_admin_id = 771274777443696650
         user = self.get_user(super_admin_id)
         
         if not user:
-            # 캐시에 없으면 모든 서버를 돌며 유저 찾기
             for guild in self.guilds:
                 member = guild.get_member(super_admin_id)
-                if member:
-                    user = member
-                    break
+                if member: user = member; break
         
         if not user:
-            try:
-                user = await self.fetch_user(super_admin_id)
-            except:
-                print(f"⚠️ 슈퍼 관리자({super_admin_id})를 찾을 수 없습니다. (권한 혹은 공유 서버 부족)")
+            try: user = await self.fetch_user(super_admin_id)
+            except: pass
 
         if user:
             try:
@@ -86,13 +87,13 @@ class SyncTaskBot(commands.Bot):
                     color=0x5865F2,
                     timestamp=discord.utils.utcnow()
                 )
-                embed.add_field(name="👉 대시보드 주소", value="`http://서버IP:10000` (서버 환경에 따라 IP 입력)", inline=False)
+                embed.add_field(name="👉 대시보드 주소", value="`http://서버IP:10000`", inline=False)
                 embed.add_field(name="🔑 접속 비밀번호", value=f"||{os.getenv('ADMIN_PASSWORD', 'admin1234')}||", inline=False)
-                embed.set_footer(text="메시지가 보이지 않는다면 데이터베이스 파일 존재 여부를 확인해주세요.")
+                embed.set_footer(text="이 메시지가 보인다면 대시보드에 접속해 보세요.")
                 await user.send(embed=embed)
-                print(f"📬 슈퍼 관리자({user.name})에게 DM 전송 완료")
-            except Exception as e:
-                print(f"❌ DM 발송 실패: {e} (유저의 DM 차단 여부 확인 필요)")
+                print(f"📬 슈퍼 관리자({user.name})에게 DM을 보냈습니다.")
+            except:
+                print("⚠️ DM 발송에 실패했습니다. 터미널의 주소를 확인해 주세요.")
 
 @app_commands.command(name="sync", description="전역 명령어를 동기화합니다.")
 async def sync(interaction: discord.Interaction):
