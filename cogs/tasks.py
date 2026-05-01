@@ -82,7 +82,7 @@ class TasksCog(commands.Cog):
                 guilds = await cursor.fetchall()
 
         for (g_id,) in guilds:
-            async with self.bot.db.execute('SELECT id, task_type, deadline, content FROM tasks WHERE guild_id = ? AND task_type != "시험범위"', (g_id,)) as cursor:
+            async with self.bot.db.execute('SELECT id, task_type, deadline, content FROM tasks WHERE guild_id = ?', (g_id,)) as cursor:
                 tasks_list = await cursor.fetchall()
             dated_tasks, tbd_tasks, embed_desc = [], [], ""
             
@@ -223,7 +223,7 @@ class TasksCog(commands.Cog):
     @app_commands.command(name="전체일정", description="모든 일정을 한 번에 보여줍니다.")
     async def all_tasks(self, interaction: discord.Interaction):
         await record_log(interaction, "전체일정")
-        async with self.bot.db.execute('SELECT id, task_type, deadline, content FROM tasks WHERE guild_id = ? AND task_type != "시험범위"', (interaction.guild_id,)) as cursor:
+        async with self.bot.db.execute('SELECT id, task_type, deadline, content FROM tasks WHERE guild_id = ?', (interaction.guild_id,)) as cursor:
             tasks_list = await cursor.fetchall()
         if not tasks_list: return await interaction.response.send_message("✅ 현재 등록된 일정이 없습니다!")
         msg = "📋 **[전체 일정 목록]**\n"

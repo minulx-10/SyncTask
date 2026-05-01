@@ -46,15 +46,32 @@ class SyncTaskBot(commands.Bot):
         if tasks_cog:
             await tasks_cog.update_dashboard()
             
-        print(f"\n{'='*50}")
-        print(f"🚀 SyncTask 봇 로그인 성공: {self.user.name}")
-        print(f"{'='*50}")
-        print("🌐 임시 대시보드 터널 생성 완료!")
-        print("동료 관리자에게 아래 링크를 공유하세요. (새로 생성 시 기존 주소는 폭파됩니다)")
-        print(f"👉 http://localhost:10000/ (로컬 전용 주소)")
-        print(f"🔑 접속 비밀번호: {os.getenv('ADMIN_PASSWORD', 'admin1234')}")
-        print("\n⚠️ 참고: 학교 방화벽을 우회하는 SSH 기반의 고속 터널링 기술이 적용되었습니다!")
-        print(f"{'='*50}\n")
+        print(f"🚀 {self.user.name} 로그인 완료 및 시스템 가동 중...")
+
+        # 각 서버의 관리자 채널로 시작 알림 전송
+        for guild in self.guilds:
+            target_channel = None
+            async with self.db.execute("SELECT value FROM config WHERE key='admin_log_channel' AND guild_id=?", (guild.id,)) as cursor:
+                row = await cursor.fetchone()
+                if row: target_channel = self.get_channel(int(row[0]))
+            
+            if not target_channel:
+                async with self.db.execute("SELECT value FROM config WHERE key='dashboard_channel' AND guild_id=?", (guild.id,)) as cursor:
+                    row = await cursor.fetchone()
+                    if row: target_channel = self.get_channel(int(row[0]))
+
+            if target_channel:
+                embed = discord.Embed(
+                    title="🌐 SyncTask 시스템 가동 및 터널 생성 완료",
+                    description="학교 방화벽을 우회하는 SSH 기반 고속 터널링 기술이 적용되었습니다.",
+                    color=0x5865F2
+                )
+                embed.add_field(name="👉 대시보드 접속 주소", value="`http://아이피:10000` (배포 서버 IP)", inline=False)
+                embed.add_field(name="🔑 접속 비밀번호", value=f"||{os.getenv('ADMIN_PASSWORD', 'admin1234')}||", inline=False)
+                embed.set_footer(text="동료 관리자에게만 이 메시지를 공유하세요.")
+                try:
+                    await target_channel.send(embed=embed)
+                except: pass
 
 @app_commands.command(name="sync", description="전역 명령어를 동기화합니다.")
 async def sync(interaction: discord.Interaction):
