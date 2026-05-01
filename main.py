@@ -41,39 +41,58 @@ class SyncTaskBot(commands.Bot):
         self.add_view(DashboardView(self))
 
     async def on_ready(self):
-        # 봇이 완전히 준비될 때까지 잠시 대기
-        await asyncio.sleep(2)
+        # 봇이 완전히 준비될 때까지 넉넉히 대기 (5초)
+        await asyncio.sleep(5)
         
-        # 대시보드 초기 업데이트
+        # 대시보드 및 내부 상태 업데이트
         tasks_cog = self.get_cog("TasksCog")
         if tasks_cog:
             await tasks_cog.update_dashboard()
         
-        # DB 데이터 개수 확인 로그
-        async with self.db.execute("SELECT count(*) FROM tasks") as cursor:
-            count = (await cursor.fetchone())[0]
-            
-        print(f"🚀 {self.user.name} 가동 완료 (서버: {len(self.guilds)}개 / 총 일정: {count}개)")
-
-        # 슈퍼 관리자에게 DM 전송
-        super_admin_id = 771274777443696650
+        # DB 상태 정밀 점검
         try:
-            user = self.get_user(super_admin_id) or await self.fetch_user(super_admin_id)
-            if user:
+            async with self.db.execute("SELECT count(*) FROM tasks") as cursor:
+                count = (await cursor.fetchone())[0]
+            db_status = f"✅ DB 연결 성공 (총 일정: {count}개)"
+        except Exception as e:
+            db_status = f"❌ DB 조회 에러: {e}"
+            count = 0
+            
+        print(f"🚀 {self.user.name} 가동 완료 | {db_status}")
+
+        # 슈퍼 관리자(유저님) 찾기 및 DM 전송
+        super_admin_id = 771274777443696650
+        user = self.get_user(super_admin_id)
+        
+        if not user:
+            # 캐시에 없으면 모든 서버를 돌며 유저 찾기
+            for guild in self.guilds:
+                member = guild.get_member(super_admin_id)
+                if member:
+                    user = member
+                    break
+        
+        if not user:
+            try:
+                user = await self.fetch_user(super_admin_id)
+            except:
+                print(f"⚠️ 슈퍼 관리자({super_admin_id})를 찾을 수 없습니다. (권한 혹은 공유 서버 부족)")
+
+        if user:
+            try:
                 embed = discord.Embed(
-                    title="🌐 SyncTask 시스템 재가동 완료",
-                    description="SSH 기반 고속 터널링 기술을 통해 대시보드가 활성화되었습니다.",
+                    title="🌐 SyncTask 서버 가동 보고",
+                    description=f"배포 서버에서 시스템이 성공적으로 재시작되었습니다.\n\n**📊 현재 DB 상태:** {db_status}",
                     color=0x5865F2,
                     timestamp=discord.utils.utcnow()
                 )
-                embed.add_field(name="👉 대시보드 주소", value="`http://서버IP:10000`", inline=False)
+                embed.add_field(name="👉 대시보드 주소", value="`http://서버IP:10000` (서버 환경에 따라 IP 입력)", inline=False)
                 embed.add_field(name="🔑 접속 비밀번호", value=f"||{os.getenv('ADMIN_PASSWORD', 'admin1234')}||", inline=False)
-                embed.add_field(name="📊 데이터 상태", value=f"총 {count}개의 일정이 로드되었습니다.", inline=True)
-                embed.set_footer(text="이 정보는 유출되지 않도록 주의해 주세요.")
+                embed.set_footer(text="메시지가 보이지 않는다면 데이터베이스 파일 존재 여부를 확인해주세요.")
                 await user.send(embed=embed)
-                print(f"📬 슈퍼 관리자({user.name})에게 접속 정보를 전송했습니다.")
-        except Exception as e:
-            print(f"❌ DM 전송 실패: {e}")
+                print(f"📬 슈퍼 관리자({user.name})에게 DM 전송 완료")
+            except Exception as e:
+                print(f"❌ DM 발송 실패: {e} (유저의 DM 차단 여부 확인 필요)")
 
 @app_commands.command(name="sync", description="전역 명령어를 동기화합니다.")
 async def sync(interaction: discord.Interaction):
