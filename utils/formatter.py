@@ -24,10 +24,11 @@ async def get_schedule_message(target_date: datetime.datetime, guild_id: int, db
     weekday_num = target_date.weekday()
     weekday_str = ['월', '화', '수', '목', '금', '토', '일'][weekday_num]
     
-    # 임베드 기본 설정
-    color = 0x5865F2 if weekday_num < 5 else 0x57F287  # 평일은 파랑, 주말은 초록
+    # 임베드 컬러: 평일(Blurple), 주말(Green)
+    color = 0x5865F2 if weekday_num < 5 else 0x57F287
     embed = discord.Embed(
         title=f"📅 {target_date.month}월 {target_date.day}일 {weekday_str}요일 일정",
+        description=f"**{target_date.strftime('%Y-%m-%d')}** 학급 운영 정보입니다.",
         color=color,
         timestamp=datetime.datetime.now(kst)
     )
@@ -35,7 +36,7 @@ async def get_schedule_message(target_date: datetime.datetime, guild_id: int, db
     now = datetime.datetime.now(kst)
     today_date = now.replace(hour=0, minute=0, second=0, microsecond=0) 
     
-    # 🚨 시험 일정 (D-Day)
+    # 📢 주요 학사 일정 (D-Day)
     exam_info = ""
     for e_key, e_name in [("midterm_date", "중간고사"), ("final_date", "기말고사")]:
         async with db.execute("SELECT value FROM config WHERE key=? AND guild_id=?", (e_key, guild_id)) as cursor:
@@ -47,52 +48,53 @@ async def get_schedule_message(target_date: datetime.datetime, guild_id: int, db
                     days_to_end = (end_dt.replace(hour=0, minute=0, second=0, microsecond=0) - today_date).days
                     
                     if days_to_start > 0:
-                        exam_info += f"🔔 **{e_name}**까지 `D-{days_to_start}` (기간: {row[0]})\n"
+                        exam_info += f"🔔 **{e_name}**까지 `D-{days_to_start}`\n"
                     elif days_to_end >= 0:
                         day_num = abs(days_to_start) + 1
-                        exam_info += f"🔥 **{e_name} 진행 중!** ({day_num}일차 / 기간: {row[0]})\n"
+                        exam_info += f"🔥 **{e_name} 진행 중!** ({day_num}일차)\n"
                 except Exception: pass
     
     if exam_info:
-        embed.add_field(name="📢 주요 학사 일정", value=exam_info.strip(), inline=False)
+        embed.add_field(name="📢 주요 학사 일정", value=f"```\n{exam_info.strip()}\n```", inline=False)
         
-    # 📚 시간표
-    timetable_text = ""
+    # 📖 시간표 섹션
     async with db.execute("SELECT value FROM config WHERE key='grade' AND guild_id=?", (guild_id,)) as cursor:
         g_row = await cursor.fetchone()
     async with db.execute("SELECT value FROM config WHERE key='class_nm' AND guild_id=?", (guild_id,)) as cursor:
         c_row = await cursor.fetchone()
 
+    timetable_text = ""
     if weekday_num >= 5: 
         timetable_text = "✨ 오늘은 즐거운 휴일입니다! 푹 쉬세요."
     elif g_row and c_row:
         date_str = target_date.strftime("%Y%m%d")
         timetable = await fetch_neis_timetable(date_str, g_row[0], c_row[0])
         if timetable:
-            timetable_text = "".join([f"`{perio}교시` {subject}\n" for perio, subject in timetable])
+            timetable_text = "\n".join([f"**{perio}교시** │ {subject}" for perio, subject in timetable])
         else: 
-            timetable_text = "❌ 나이스(NEIS) 데이터가 없습니다."
+            timetable_text = "❌ 나이스(NEIS)에 등록된 수업 데이터가 없습니다."
     else: 
-        timetable_text = "⚠️ `/학급설정`을 먼저 진행해주세요."
+        timetable_text = "⚠️ `/학급설정`을 통해 학년/반을 먼저 설정해주세요."
     
-    embed.add_field(name="📖 시간표", value=timetable_text.strip(), inline=True)
+    embed.add_field(name="📖 오늘의 시간표", value=timetable_text, inline=False)
         
-    # 📝 학급 일정 (숙제/수행)
+    # 📝 학급 일정 섹션 (숙제/수행)
     async with db.execute('SELECT task_type, content FROM tasks WHERE deadline = ? AND guild_id = ?', (target_date.strftime("%m/%d"), guild_id)) as cursor:
         target_tasks = await cursor.fetchall()
     
     task_text = ""
     if not target_tasks: 
-        task_text = "✅ 마감인 일정이 없습니다."
+        task_text = "✅ 오늘 마감인 일정이 없습니다. 깨끗하네요!"
     else:
         tasks_dict = {}
         for t_type, content in target_tasks: tasks_dict.setdefault(t_type, []).append(content)
         for t_type, contents in tasks_dict.items():
-            emoji = "✏️" if "숙제" in t_type else "🧪" if "수행" in t_type else "📌"
-            task_text += f"**{emoji} {t_type}**\n" + "".join([f"└ {c}\n" for c in contents])
+            emoji = "📙" if "숙제" in t_type else "📝" if "수행" in t_type else "📌"
+            task_text += f"{emoji} **{t_type}**\n" + "\n".join([f"└ {c}" for c in contents]) + "\n\n"
             
-    embed.add_field(name="📝 학급 일정", value=task_text.strip(), inline=True)
-    embed.set_footer(text="SyncTask Service • 광주소프트웨어마이스터고")
+    embed.add_field(name="📝 마감 임박 일정", value=task_text.strip() if task_text else "내역 없음", inline=False)
+    
+    embed.set_footer(text="SyncTask Service • 광주소프트웨어마이스터고", icon_url="https://i.imgur.com/890v9Ic.png") # 예시 아이콘
     
     return embed
 

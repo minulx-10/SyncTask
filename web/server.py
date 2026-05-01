@@ -1,6 +1,59 @@
 from aiohttp import web
 import os
 import json
+import re
+
+# .env에서 비밀번호 로드 (없으면 기본값 설정)
+ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin1234")
+
+async def auth_middleware(app, handler):
+    async def middleware(request):
+        if request.path.startswith('/api') or request.path == '/':
+            password = request.cookies.get('admin_pass')
+            if password != ADMIN_PASSWORD and request.path != '/login' and request.path != '/do_login':
+                if request.path.startswith('/api'):
+                    return web.json_response({"error": "Unauthorized"}, status=401)
+                return web.HTTPFound('/login')
+        return await handler(request)
+    return middleware
+
+async def login_page(request):
+    html = """
+    <!DOCTYPE html>
+    <html lang="ko">
+    <head>
+        <meta charset="UTF-8">
+        <title>SyncTask - Login</title>
+        <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css">
+        <style>
+            body { background: #0f1216; color: white; font-family: 'Pretendard'; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+            .login-box { background: rgba(255,255,255,0.05); padding: 40px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.1); backdrop-filter: blur(10px); width: 350px; text-align: center; }
+            h2 { color: #5865F2; margin-bottom: 20px; }
+            input { width: 100%; padding: 12px; margin: 10px 0; border-radius: 8px; border: 1px solid #333; background: #1e1e1e; color: white; }
+            button { width: 100%; padding: 12px; border-radius: 8px; border: none; background: #5865F2; color: white; font-weight: bold; cursor: pointer; margin-top: 10px; }
+            button:hover { background: #4752c4; }
+        </style>
+    </head>
+    <body>
+        <div class="login-box">
+            <h2>🔐 Admin Login</h2>
+            <form action="/do_login" method="post">
+                <input type="password" name="password" placeholder="Password" required>
+                <button type="submit">Login</button>
+            </form>
+        </div>
+    </body>
+    </html>
+    """
+    return web.Response(text=html, content_type='text/html')
+
+async def do_login(request):
+    data = await request.post()
+    if data.get('password') == ADMIN_PASSWORD:
+        resp = web.HTTPFound('/')
+        resp.set_cookie('admin_pass', ADMIN_PASSWORD, max_age=86400)
+        return resp
+    return web.HTTPFound('/login?error=1')
 
 async def admin_log_dashboard(request):
     html = """
@@ -9,179 +62,156 @@ async def admin_log_dashboard(request):
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>SyncTask Admin Dashboard</title>
+        <title>SyncTask Admin CCTV</title>
         <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css">
         <style>
-            :root {
-                --bg-color: #0f1216;
-                --card-bg: rgba(255, 255, 255, 0.05);
-                --accent-color: #5865F2;
-                --text-main: #ffffff;
-                --text-muted: #a0a0a0;
-                --success: #57F287;
-            }
+            :root { --bg: #0f1216; --card: rgba(255,255,255,0.05); --accent: #5865F2; --text: #fff; --text-m: #a0a0a0; }
             * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Pretendard', sans-serif; }
-            body { 
-                background-color: var(--bg-color); 
-                color: var(--text-main); 
-                display: flex; 
-                justify-content: center; 
-                align-items: center; 
-                min-height: 100vh;
-                background-image: radial-gradient(circle at 10% 20%, rgba(88, 101, 242, 0.1) 0%, transparent 40%);
-            }
-            .container { 
-                width: 90%; 
-                max-width: 900px; 
-                background: var(--card-bg); 
-                backdrop-filter: blur(15px); 
-                -webkit-backdrop-filter: blur(15px);
-                border: 1px solid rgba(255, 255, 255, 0.1);
-                border-radius: 24px; 
-                padding: 40px; 
-                box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
-            }
-            header { 
-                display: flex; 
-                justify-content: space-between; 
-                align-items: center; 
-                margin-bottom: 30px; 
-                border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-                padding-bottom: 20px;
-            }
-            h1 { font-size: 1.5rem; font-weight: 700; color: var(--accent-color); letter-spacing: -0.5px; }
-            .status-badge { 
-                background: rgba(87, 242, 135, 0.1); 
-                color: var(--success); 
-                padding: 6px 12px; 
-                border-radius: 100px; 
-                font-size: 0.75rem; 
-                font-weight: 600;
-                display: flex; align-items: center; gap: 6px;
-            }
-            .status-dot { width: 8px; height: 8px; background: var(--success); border-radius: 50%; box-shadow: 0 0 10px var(--success); }
+            body { background: var(--bg); color: var(--text); padding: 40px; }
+            .container { max-width: 1000px; margin: 0 auto; }
+            header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; }
+            h1 { font-size: 1.5rem; color: var(--accent); }
             
-            #log-list { 
-                list-style: none; 
-                max-height: 500px; 
-                overflow-y: auto; 
-                padding-right: 10px;
-            }
-            #log-list::-webkit-scrollbar { width: 6px; }
-            #log-list::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.1); border-radius: 10px; }
-            
-            li { 
-                background: rgba(255, 255, 255, 0.02); 
-                margin-bottom: 12px; 
-                padding: 16px 20px; 
-                border-radius: 12px; 
-                border: 1px solid rgba(255, 255, 255, 0.03);
-                font-size: 0.9rem; 
-                line-height: 1.5;
-                transition: transform 0.2s, background 0.2s;
-                animation: fadeIn 0.4s ease-out;
-            }
-            li:hover { background: rgba(255, 255, 255, 0.05); transform: translateX(5px); }
-            
-            @keyframes fadeIn {
-                from { opacity: 0; transform: translateY(10px); }
-                to { opacity: 1; transform: translateY(0); }
-            }
+            .controls { display: flex; gap: 15px; margin-bottom: 20px; }
+            select { background: #1e1e1e; color: white; border: 1px solid #333; padding: 8px 15px; border-radius: 8px; }
 
-            .footer { 
-                text-align: center; 
-                margin-top: 30px; 
-                font-size: 0.8rem; 
-                color: var(--text-muted);
+            .log-item { 
+                background: var(--card); border: 1px solid rgba(255,255,255,0.05); border-radius: 12px; padding: 15px 20px; margin-bottom: 10px;
+                display: flex; justify-content: space-between; align-items: center; cursor: pointer; transition: 0.2s;
             }
+            .log-item:hover { background: rgba(255,255,255,0.1); transform: translateX(5px); }
+            .log-meta { font-size: 0.85rem; color: var(--text-m); }
+            .log-content { font-weight: 500; }
+            .guild-tag { background: rgba(88,101,242,0.2); color: #5865F2; padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; margin-right: 10px; }
+
+            /* Modal */
+            .modal { display: none; position: fixed; z-index: 100; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); backdrop-filter: blur(5px); }
+            .modal-content { background: #1e1e1e; margin: 15% auto; padding: 30px; border-radius: 20px; width: 500px; border: 1px solid #333; }
+            .modal-header { color: var(--accent); margin-bottom: 15px; font-weight: bold; }
+            .close { float: right; cursor: pointer; color: var(--text-m); }
         </style>
     </head>
     <body>
         <div class="container">
             <header>
-                <h1>SyncTask Live Monitor</h1>
-                <div class="status-badge"><div class="status-dot"></div> Live Monitoring</div>
+                <h1>🖥️ SyncTask Admin CCTV</h1>
+                <div id="status">🟢 Online</div>
             </header>
-            <ul id="log-list">
-                <li style='text-align:center;'>Initializing Connection... 🔄</li>
-            </ul>
-            <div class="footer">© 2024 SyncTask Service • Powered by Google Deepmind</div>
+            
+            <div class="controls">
+                <select id="guild-filter" onchange="renderLogs()">
+                    <option value="all">모든 서버 보기</option>
+                </select>
+                <button onclick="fetchData()" style="background:none; border:1px solid #333; color:white; padding:5px 15px; border-radius:8px; cursor:pointer;">새로고침</button>
+            </div>
+
+            <div id="log-list"></div>
+        </div>
+
+        <div id="logModal" class="modal">
+            <div class="modal-content">
+                <span class="close" onclick="closeModal()">&times;</span>
+                <div class="modal-header">📄 Log Detail</div>
+                <div id="modal-body" style="line-height:1.6; word-break:break-all;"></div>
+            </div>
         </div>
 
         <script>
-            function fetchLogs() {
-                fetch('/api/logs?t=' + new Date().getTime())
-                .then(response => response.text())
-                .then(html => {
-                    const list = document.getElementById('log-list');
-                    if (list.innerHTML !== html) {
-                        list.innerHTML = html;
-                    }
+            let allLogs = [];
+            async function fetchData() {
+                const res = await fetch('/api/logs_json');
+                allLogs = await res.json();
+                updateFilters();
+                renderLogs();
+            }
+
+            function updateFilters() {
+                const guilds = [...new Set(allLogs.map(l => l.guild_name))];
+                const filter = document.getElementById('guild-filter');
+                filter.innerHTML = '<option value="all">모든 서버 보기</option>';
+                guilds.forEach(g => {
+                    filter.innerHTML += `<option value="${g}">${g}</option>`;
                 });
             }
-            fetchLogs();
-            setInterval(fetchLogs, 3000);
+
+            function renderLogs() {
+                const filter = document.getElementById('guild-filter').value;
+                const list = document.getElementById('log-list');
+                list.innerHTML = '';
+                
+                allLogs.filter(l => filter === 'all' || l.guild_name === filter).forEach(l => {
+                    const item = document.createElement('div');
+                    item.className = 'log-item';
+                    item.onclick = () => showDetail(l);
+                    item.innerHTML = `
+                        <div>
+                            <span class="guild-tag">${l.guild_name}</span>
+                            <span class="log-content">${l.user}: ${l.command}</span>
+                        </div>
+                        <div class="log-meta">${l.time}</div>
+                    `;
+                    list.appendChild(item);
+                });
+            }
+
+            function showDetail(log) {
+                document.getElementById('modal-body').innerHTML = `
+                    <p><b>Time:</b> ${log.time}</p>
+                    <p><b>Guild:</b> ${log.guild_name} (${log.guild_id})</p>
+                    <p><b>User:</b> ${log.user}</p>
+                    <p><b>Command:</b> <span style="color:#5865F2">/${log.command}</span></p>
+                    <p><b>Details:</b> ${log.details || '없음'}</p>
+                `;
+                document.getElementById('logModal').style.display = "block";
+            }
+
+            function closeModal() { document.getElementById('logModal').style.display = "none"; }
+            window.onclick = (e) => { if(e.target.className == 'modal') closeModal(); }
+
+            fetchData();
+            setInterval(fetchData, 5000);
         </script>
     </body>
     </html>
     """
     return web.Response(text=html, content_type='text/html')
 
-async def api_get_logs(request):
+async def api_get_logs_json(request):
     try:
         BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         log_path = os.path.join(BASE_DIR, "alimi_cmd_log.txt")
+        if not os.path.exists(log_path): return web.json_response([])
+        
         with open(log_path, "r", encoding="utf-8") as f:
             lines = f.readlines()
         
-        lines.reverse()
-        recent_logs = lines[:50] 
-        log_html = ""
-        for line in recent_logs:
-            if not line.strip(): continue
-            log_html += f"<li>{line.strip()}</li>"
-            
-        if not log_html: log_html = "<li style='text-align:center;'>아직 기록된 명령어가 없습니다.</li>"
-        return web.Response(text=log_html, content_type='text/html')
-    except FileNotFoundError:
-        return web.Response(text="<li style='text-align:center;'>로그 파일이 아직 없습니다.</li>", content_type='text/html')
+        parsed = []
+        for line in reversed(lines):
+            # [GID:ID] [TIME] [GUILD] [USER] COMMAND (DETAILS)
+            match = re.match(r"\[GID:(.*?)\] \[(.*?)\] \[(.*?)\] 👤(.*?): \/(.*?)(?: \((.*)\))?$", line.strip())
+            if match:
+                parsed.append({
+                    "guild_id": match.group(1),
+                    "time": match.group(2),
+                    "guild_name": match.group(3),
+                    "user": match.group(4),
+                    "command": match.group(5),
+                    "details": match.group(6) or ""
+                })
+        return web.json_response(parsed[:100])
     except Exception as e:
-        return web.Response(text=f"<li>에러 발생: {e}</li>", content_type='text/html')
-
-async def api_get_tasks(request):
-    try:
-        db = request.app['db']
-        grade = request.query.get('grade')
-        class_nm = request.query.get('class_nm')
-        common_guilds = []
-        if grade and class_nm:
-            async with db.execute("SELECT guild_id FROM config WHERE key='grade' AND value=?", (str(grade),)) as cursor:
-                grade_guilds = set([row[0] for row in await cursor.fetchall()])
-            async with db.execute("SELECT guild_id FROM config WHERE key='class_nm' AND value=?", (str(class_nm),)) as cursor:
-                class_guilds = set([row[0] for row in await cursor.fetchall()])
-            common_guilds = list(grade_guilds.intersection(class_guilds))
-        
-        if common_guilds:
-            placeholders = ','.join('?' for _ in common_guilds)
-            async with db.execute(f'SELECT id, task_type, deadline, content FROM tasks WHERE guild_id IN ({placeholders})', common_guilds) as cursor:
-                rows = await cursor.fetchall()
-        else:
-            return web.Response(text="[]", content_type='application/json')
-            
-        tasks_list = [{"id": r[0], "task_type": r[1], "deadline": r[2], "content": r[3]} for r in rows]
-        return web.Response(text=json.dumps(tasks_list, ensure_ascii=False), content_type='application/json')
-    except Exception as e:
-        return web.Response(text=json.dumps({"error": str(e)}), status=500, content_type='application/json')
+        return web.json_response({"error": str(e)}, status=500)
 
 async def run_web_server(db):
-    app = web.Application()
+    app = web.Application(middlewares=[auth_middleware])
     app['db'] = db
-    app.router.add_get('/', admin_log_dashboard)          
-    app.router.add_get('/api/logs', api_get_logs)         
-    app.router.add_get('/api/tasks', api_get_tasks)       
+    app.router.add_get('/', admin_log_dashboard)
+    app.router.add_get('/login', login_page)
+    app.router.add_post('/do_login', do_login)
+    app.router.add_get('/api/logs_json', api_get_logs_json)
     
     runner = web.AppRunner(app)
     await runner.setup()
-    site = web.TCPSite(runner, '0.0.0.0', 10000) 
+    site = web.TCPSite(runner, '0.0.0.0', 10000)
     await site.start()
-    print("🌍 관리자 CCTV 웹사이트 & API 서버 정상 작동 시작! (포트 10000)")
+    print("🌍 프리미엄 관리자 대시보드 기동 완료 (포트 10000)")
