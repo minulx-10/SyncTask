@@ -106,14 +106,6 @@ async def sync(interaction: discord.Interaction):
 async def main():
     bot = SyncTaskBot()
     
-    # [빌드/배포 로그 확인용] 실행 즉시 접속 정보 출력
-    print(f"\n{'='*60}")
-    print("🌐 SyncTask 가동 시작 (System Initializing...)")
-    print(f"{'='*60}")
-    print("📍 Dashboard URL: http://서버IP:10000")
-    print("🔐 Password: [.env 파일의 ADMIN_PASSWORD 확인]")
-    print(f"{'='*60}\n")
-
     # 에러 핸들러 추가
     @bot.tree.error
     async def on_app_command_error(interaction: discord.Interaction, error: app_commands.AppCommandError):

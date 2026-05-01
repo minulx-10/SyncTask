@@ -50,5 +50,33 @@ class AdminCog(commands.Cog):
         await self.bot.db.commit()
         await interaction.response.send_message(f"📢 이제 숙제 추가 요청이 {channel.mention} 채널로 전송됩니다!", ephemeral=True)
 
+    @app_commands.command(name="대시보드정보", description="[슈퍼 관리자 전용] 웹 대시보드 접속 정보를 확인합니다.")
+    async def dashboard_info(self, interaction: discord.Interaction):
+        if interaction.user.id != 771274777443696650:
+            return await interaction.response.send_message("🚫 이 명령어는 슈퍼 관리자만 사용할 수 있습니다.", ephemeral=True)
+            
+        await record_log(interaction, "대시보드정보")
+        await interaction.response.defer(ephemeral=True) # IP 조회 시간이 걸릴 수 있으므로 지연 응답
+        
+        import aiohttp
+        import os
+        public_ip = "확인 불가"
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get('https://api.ipify.org') as resp:
+                    public_ip = await resp.text()
+        except: pass
+
+        embed = discord.Embed(
+            title="🖥️ SyncTask Admin Dashboard Info",
+            description="서버에서 실행 중인 대시보드 접속 정보입니다.",
+            color=0x5865F2
+        )
+        embed.add_field(name="🌐 Dashboard URL", value=f"http://{public_ip}:10000", inline=False)
+        embed.add_field(name="🔑 Password", value=f"||{os.getenv('ADMIN_PASSWORD', 'admin1234')}||", inline=False)
+        embed.set_footer(text="이 정보는 유저님(슈퍼 관리자)에게만 보이는 비밀 메시지입니다.")
+        
+        await interaction.followup.send(embed=embed, ephemeral=True)
+
 async def setup(bot):
     await bot.add_cog(AdminCog(bot))
