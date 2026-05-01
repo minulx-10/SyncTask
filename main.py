@@ -94,7 +94,7 @@ async def main():
     from web.server import run_web_server
     async def start_web():
         while bot.db is None: await asyncio.sleep(0.5)
-        await run_web_server(bot.db)
+        await run_web_server(bot)
 
     async with bot:
         bot.loop.create_task(start_web())
