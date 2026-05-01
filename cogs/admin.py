@@ -50,33 +50,48 @@ class AdminCog(commands.Cog):
         await self.bot.db.commit()
         await interaction.response.send_message(f"📢 이제 숙제 추가 요청이 {channel.mention} 채널로 전송됩니다!", ephemeral=True)
 
-    @app_commands.command(name="대시보드정보", description="[슈퍼 관리자 전용] 웹 대시보드 접속 정보를 확인합니다.")
+    @app_commands.command(name="dashboard", description="[슈퍼 관리자 전용] 웹 대시보드 접속 정보를 확인합니다.")
     async def dashboard_info(self, interaction: discord.Interaction):
-        if interaction.user.id != 771274777443696650:
+        if interaction.user.id not in SUPER_ADMINS:
             return await interaction.response.send_message("🚫 이 명령어는 슈퍼 관리자만 사용할 수 있습니다.", ephemeral=True)
             
-        await record_log(interaction, "대시보드정보")
-        await interaction.response.defer(ephemeral=True) # IP 조회 시간이 걸릴 수 있으므로 지연 응답
+        await interaction.response.defer(ephemeral=True) # IP 조회 시간이 걸릴 수 있으므로 지연 응답을 가장 먼저 수행
+        await record_log(interaction, "dashboard")
         
         import aiohttp
         import os
+        
         public_ip = "확인 불가"
+        url = "http://localhost:10000"
         try:
+            # 타임아웃을 설정하여 IP 조회가 무한정 길어지는 것을 방지
             async with aiohttp.ClientSession() as session:
-                async with session.get('https://api.ipify.org') as resp:
-                    public_ip = await resp.text()
-        except: pass
+                async with session.get('https://api.ipify.org', timeout=aiohttp.ClientTimeout(total=3.0)) as resp:
+                    if resp.status == 200:
+                        public_ip = (await resp.text()).strip()
+                        url = f"http://{public_ip}:10000"
+        except Exception:
+            pass
 
         embed = discord.Embed(
-            title="🖥️ SyncTask Admin Dashboard Info",
-            description="서버에서 실행 중인 대시보드 접속 정보입니다.",
-            color=0x5865F2
+            title="✨ SyncTask Admin Dashboard",
+            description="서버에서 실행 중인 대시보드 접속 정보입니다. 아래 버튼을 클릭하여 바로 이동할 수 있습니다.",
+            color=0x2b2d31 # 디스코드 다크모드 배경색과 어울리는 세련된 색상
         )
-        embed.add_field(name="🌐 Dashboard URL", value=f"http://{public_ip}:10000", inline=False)
-        embed.add_field(name="🔑 Password", value=f"||{os.getenv('ADMIN_PASSWORD', 'admin1234')}||", inline=False)
-        embed.set_footer(text="이 정보는 유저님(슈퍼 관리자)에게만 보이는 비밀 메시지입니다.")
         
-        await interaction.followup.send(embed=embed, ephemeral=True)
+        # 디자인 개선을 위해 이모지와 깔끔한 포맷 적용
+        embed.add_field(name="🌍 **접속 주소 (URL)**", value=f"```http\n{url}\n```", inline=False)
+        embed.add_field(name="🔑 **비밀번호 (Password)**", value=f"||**{os.getenv('ADMIN_PASSWORD', 'admin1234')}**||", inline=False)
+        
+        embed.set_thumbnail(url=self.bot.user.display_avatar.url if self.bot.user else None)
+        embed.set_footer(text="이 메시지는 슈퍼 관리자에게만 표시되는 보안 메시지입니다.", icon_url="https://cdn-icons-png.flaticon.com/512/2097/2097276.png")
+
+        # 바로가기 버튼 추가
+        view = discord.ui.View()
+        if public_ip != "확인 불가":
+            view.add_item(discord.ui.Button(label="대시보드 바로가기", url=url, style=discord.ButtonStyle.link, emoji="🔗"))
+
+        await interaction.followup.send(embed=embed, view=view, ephemeral=True)
 
 async def setup(bot):
     await bot.add_cog(AdminCog(bot))
