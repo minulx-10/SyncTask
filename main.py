@@ -47,7 +47,20 @@ class SyncTaskBot(commands.Bot):
         print("✅ Slash commands synced!")
 
     async def on_ready(self):
+        # 봇이 완전히 준비될 때까지 잠시 대기
         await asyncio.sleep(5)
+        
+        # [긴급] 서버별 즉시 동기화 (Instant Guild Sync)
+        # 전역 명령어의 1시간 지연을 방지하기 위해 각 서버에 직접 등록합니다.
+        print("⚡ 서버별 즉시 동기화 진행 중...")
+        for guild in self.guilds:
+            try:
+                self.tree.copy_global_to(guild=guild)
+                await self.tree.sync(guild=guild)
+                print(f"✅ 즉시 동기화 완료: {guild.name}")
+            except Exception as e:
+                print(f"❌ {guild.name} 동기화 실패: {e}")
+
         tasks_cog = self.get_cog("TasksCog")
         if tasks_cog:
             await tasks_cog.update_dashboard()
