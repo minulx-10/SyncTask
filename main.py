@@ -41,6 +41,11 @@ class SyncTaskBot(commands.Bot):
         self.add_view(DashboardView(self))
         self.add_view(TaskReviewView(self))
 
+        # 4. 자동 동기화 (Slash Commands Auto-Sync)
+        print("🔄 Syncing slash commands...")
+        await self.tree.sync()
+        print("✅ Slash commands synced!")
+
     async def on_ready(self):
         await asyncio.sleep(5)
         tasks_cog = self.get_cog("TasksCog")
@@ -72,19 +77,6 @@ class SyncTaskBot(commands.Bot):
             except: pass
 
 bot = SyncTaskBot()
-
-@bot.command(name="sync")
-async def sync_prefix(ctx):
-    if ctx.author.id != 771274777443696650: return
-    await bot.tree.sync()
-    await ctx.send("✅ 슬래시 명령어 동기화 완료!")
-
-@bot.tree.command(name="sync", description="전역 명령어를 동기화합니다.")
-async def sync_slash(interaction: discord.Interaction):
-    if interaction.user.id != 771274777443696650:
-        return await interaction.response.send_message("🚫 권한이 없습니다.", ephemeral=True)
-    await bot.tree.sync()
-    await interaction.response.send_message("✅ 모든 명령어가 동기화되었습니다!", ephemeral=True)
 
 async def main():
     from web.server import run_web_server
