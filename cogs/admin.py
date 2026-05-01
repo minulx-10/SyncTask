@@ -80,7 +80,8 @@ class AdminCog(commands.Cog):
         )
         
         # 디자인 개선을 위해 이모지와 깔끔한 포맷 적용
-        embed.add_field(name="🌍 **접속 주소 (URL)**", value=f"```http\n{url}\n```", inline=False)
+        embed.add_field(name="🌍 **외부 접속 주소 (Public URL)**", value=f"```http\n{url}\n```", inline=False)
+        embed.add_field(name="🏠 **내부 접속 주소 (Local URL)**", value=f"```http\nhttp://localhost:10000\n```\n*(봇이 켜져있는 컴퓨터에서 접속할 때 사용)*", inline=False)
         embed.add_field(name="🔑 **비밀번호 (Password)**", value=f"||**{os.getenv('ADMIN_PASSWORD', 'admin1234')}**||", inline=False)
         
         embed.set_thumbnail(url=self.bot.user.display_avatar.url if self.bot.user else None)
@@ -89,7 +90,8 @@ class AdminCog(commands.Cog):
         # 바로가기 버튼 추가
         view = discord.ui.View()
         if public_ip != "확인 불가":
-            view.add_item(discord.ui.Button(label="대시보드 바로가기", url=url, style=discord.ButtonStyle.link, emoji="🔗"))
+            view.add_item(discord.ui.Button(label="외부망 접속", url=url, style=discord.ButtonStyle.link, emoji="🌍"))
+        view.add_item(discord.ui.Button(label="로컬 접속", url="http://localhost:10000", style=discord.ButtonStyle.link, emoji="🏠"))
 
         await interaction.followup.send(embed=embed, view=view, ephemeral=True)
 
