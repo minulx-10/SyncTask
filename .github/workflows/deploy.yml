@@ -25,3 +25,12 @@ jobs:
             source venv/bin/activate
             pip install -r requirements.txt
             sudo systemctl restart synctask.service
+
+      - name: Deployment Summary
+        run: |
+          echo "### 🚀 SyncTask Deployment Successful!" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**🌐 Admin Dashboard:** http://${{ secrets.SERVER_IP }}:10000" >> $GITHUB_STEP_SUMMARY
+          echo "**🔑 Password:** Check your .env file on the server" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "⚠️ *SSH-based high-speed tunneling technology is now active!*" >> $GITHUB_STEP_SUMMARY
