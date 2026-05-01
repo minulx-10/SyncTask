@@ -37,9 +37,8 @@ class SyncTaskBot(commands.Bot):
                     print(f"❌ Failed to load Cog {filename}: {e}")
 
         # 3. Persistent Views 등록
-        from cogs.tasks import DashboardView, TaskReviewView
+        from cogs.tasks import DashboardView
         self.add_view(DashboardView(self))
-        self.add_view(TaskReviewView(self))
 
         # 4. 자동 동기화 (Slash Commands Auto-Sync)
         print("🔄 Syncing slash commands...")
