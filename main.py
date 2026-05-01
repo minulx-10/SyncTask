@@ -41,37 +41,39 @@ class SyncTaskBot(commands.Bot):
         self.add_view(DashboardView(self))
 
     async def on_ready(self):
+        # 봇이 완전히 준비될 때까지 잠시 대기
+        await asyncio.sleep(2)
+        
         # 대시보드 초기 업데이트
         tasks_cog = self.get_cog("TasksCog")
         if tasks_cog:
             await tasks_cog.update_dashboard()
+        
+        # DB 데이터 개수 확인 로그
+        async with self.db.execute("SELECT count(*) FROM tasks") as cursor:
+            count = (await cursor.fetchone())[0]
             
-        print(f"🚀 {self.user.name} 로그인 완료 및 시스템 가동 중...")
+        print(f"🚀 {self.user.name} 가동 완료 (서버: {len(self.guilds)}개 / 총 일정: {count}개)")
 
-        # 각 서버의 관리자 채널로 시작 알림 전송
-        for guild in self.guilds:
-            target_channel = None
-            async with self.db.execute("SELECT value FROM config WHERE key='admin_log_channel' AND guild_id=?", (guild.id,)) as cursor:
-                row = await cursor.fetchone()
-                if row: target_channel = self.get_channel(int(row[0]))
-            
-            if not target_channel:
-                async with self.db.execute("SELECT value FROM config WHERE key='dashboard_channel' AND guild_id=?", (guild.id,)) as cursor:
-                    row = await cursor.fetchone()
-                    if row: target_channel = self.get_channel(int(row[0]))
-
-            if target_channel:
+        # 슈퍼 관리자에게 DM 전송
+        super_admin_id = 771274777443696650
+        try:
+            user = self.get_user(super_admin_id) or await self.fetch_user(super_admin_id)
+            if user:
                 embed = discord.Embed(
-                    title="🌐 SyncTask 시스템 가동 및 터널 생성 완료",
-                    description="학교 방화벽을 우회하는 SSH 기반 고속 터널링 기술이 적용되었습니다.",
-                    color=0x5865F2
+                    title="🌐 SyncTask 시스템 재가동 완료",
+                    description="SSH 기반 고속 터널링 기술을 통해 대시보드가 활성화되었습니다.",
+                    color=0x5865F2,
+                    timestamp=discord.utils.utcnow()
                 )
-                embed.add_field(name="👉 대시보드 접속 주소", value="`http://아이피:10000` (배포 서버 IP)", inline=False)
+                embed.add_field(name="👉 대시보드 주소", value="`http://서버IP:10000`", inline=False)
                 embed.add_field(name="🔑 접속 비밀번호", value=f"||{os.getenv('ADMIN_PASSWORD', 'admin1234')}||", inline=False)
-                embed.set_footer(text="동료 관리자에게만 이 메시지를 공유하세요.")
-                try:
-                    await target_channel.send(embed=embed)
-                except: pass
+                embed.add_field(name="📊 데이터 상태", value=f"총 {count}개의 일정이 로드되었습니다.", inline=True)
+                embed.set_footer(text="이 정보는 유출되지 않도록 주의해 주세요.")
+                await user.send(embed=embed)
+                print(f"📬 슈퍼 관리자({user.name})에게 접속 정보를 전송했습니다.")
+        except Exception as e:
+            print(f"❌ DM 전송 실패: {e}")
 
 @app_commands.command(name="sync", description="전역 명령어를 동기화합니다.")
 async def sync(interaction: discord.Interaction):

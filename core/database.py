@@ -3,6 +3,7 @@ import os
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 db_path = os.path.join(BASE_DIR, 'school_tasks.db')
+print(f"📁 Database Path: {db_path}")
 
 async def init_db():
     db = await aiosqlite.connect(db_path)
