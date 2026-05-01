@@ -95,6 +95,13 @@ class SyncTaskBot(commands.Bot):
             except:
                 print("⚠️ DM 발송에 실패했습니다. 터미널의 주소를 확인해 주세요.")
 
+@bot.command(name="sync")
+async def sync_prefix(ctx):
+    if ctx.author.id != 771274777443696650:
+        return
+    await bot.tree.sync()
+    await ctx.send("✅ 슬래시 명령어 동기화 완료! (잠시 후 목록에 나타납니다)")
+
 @app_commands.command(name="sync", description="전역 명령어를 동기화합니다.")
 async def sync(interaction: discord.Interaction):
     if interaction.user.id == 771274777443696650:
