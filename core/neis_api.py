@@ -2,6 +2,9 @@ import aiohttp
 import os
 
 async def fetch_neis_timetable(date_str: str, grade: str, class_nm: str) -> list:
+    if not os.getenv("NEIS_API_KEY"):
+        return None
+
     url = "https://open.neis.go.kr/hub/hisTimetable"
     params = {
         "KEY": os.getenv("NEIS_API_KEY"), 
@@ -11,12 +14,13 @@ async def fetch_neis_timetable(date_str: str, grade: str, class_nm: str) -> list
     }
     try:
         async with aiohttp.ClientSession() as session:
-            async with session.get(url, params=params) as resp:
+            timeout = aiohttp.ClientTimeout(total=5)
+            async with session.get(url, params=params, timeout=timeout) as resp:
                 if resp.status == 200:
                     try:
                         data = await resp.json()
                     except aiohttp.ContentTypeError:
-                        return []
+                        return None
                     
                     if "hisTimetable" in data:
                         rows = data["hisTimetable"][1]["row"]
@@ -26,6 +30,7 @@ async def fetch_neis_timetable(date_str: str, grade: str, class_nm: str) -> list
                             if perio not in timetable_dict:
                                 timetable_dict[perio] = r["ITRT_CNTNT"]
                         return sorted(timetable_dict.items())
+                    return []
     except Exception:
-        pass
-    return []
+        return None
+    return None

@@ -6,9 +6,6 @@ import asyncio
 import datetime
 from dotenv import load_dotenv
 from core.database import init_db
-from core.neis_api import fetch_neis_timetable
-from utils.logger import record_log
-from utils.formatter import get_schedule_message
 
 load_dotenv()
 kst = datetime.timezone(datetime.timedelta(hours=9))
@@ -40,25 +37,24 @@ class SyncTaskBot(commands.Bot):
         from cogs.tasks import DashboardView
         self.add_view(DashboardView(self))
 
-        # 4. 자동 동기화 (Slash Commands Auto-Sync)
-        print("🔄 Syncing slash commands...")
-        await self.tree.sync()
-        print("✅ Slash commands synced!")
+        if os.getenv("SYNC_COMMANDS_ON_BOOT", "1") == "1":
+            print("🔄 Syncing slash commands...")
+            await self.tree.sync()
+            print("✅ Slash commands synced!")
 
     async def on_ready(self):
         # 봇이 완전히 준비될 때까지 잠시 대기
         await asyncio.sleep(5)
         
-        # [긴급] 서버별 즉시 동기화 (Instant Guild Sync)
-        # 전역 명령어의 1시간 지연을 방지하기 위해 각 서버에 직접 등록합니다.
-        print("⚡ 서버별 즉시 동기화 진행 중...")
-        for guild in self.guilds:
-            try:
-                self.tree.copy_global_to(guild=guild)
-                await self.tree.sync(guild=guild)
-                print(f"✅ 즉시 동기화 완료: {guild.name}")
-            except Exception as e:
-                print(f"❌ {guild.name} 동기화 실패: {e}")
+        if os.getenv("GUILD_SYNC_ON_READY", "0") == "1":
+            print("⚡ 서버별 즉시 동기화 진행 중...")
+            for guild in self.guilds:
+                try:
+                    self.tree.copy_global_to(guild=guild)
+                    await self.tree.sync(guild=guild)
+                    print(f"✅ 즉시 동기화 완료: {guild.name}")
+                except Exception as e:
+                    print(f"❌ {guild.name} 동기화 실패: {e}")
 
         tasks_cog = self.get_cog("TasksCog")
         if tasks_cog:
@@ -84,9 +80,11 @@ class SyncTaskBot(commands.Bot):
                     description=f"시스템이 재시작되었습니다.\n**📊 DB 상태:** {db_status}",
                     color=0x5865F2
                 )
-                embed.add_field(name="🔑 관리자 비밀번호", value=f"||{os.getenv('ADMIN_PASSWORD', 'admin1234')}||")
+                password_status = "설정됨" if os.getenv("ADMIN_PASSWORD") else "미설정 - 웹 로그인이 잠깁니다"
+                embed.add_field(name="🔑 관리자 비밀번호 상태", value=password_status)
                 await user.send(embed=embed)
-            except: pass
+            except Exception:
+                pass
 
 bot = SyncTaskBot()
 
@@ -98,7 +96,10 @@ async def main():
 
     async with bot:
         bot.loop.create_task(start_web())
-        await bot.start(os.getenv('DISCORD_TOKEN'))
+        token = os.getenv('DISCORD_TOKEN')
+        if not token:
+            raise RuntimeError("DISCORD_TOKEN 환경 변수가 설정되지 않았습니다.")
+        await bot.start(token)
 
 if __name__ == "__main__":
     asyncio.run(main())

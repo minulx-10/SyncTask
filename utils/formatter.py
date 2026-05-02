@@ -1,10 +1,24 @@
 import datetime
 import discord
+import json
 
 kst = datetime.timezone(datetime.timedelta(hours=9))
 
+def normalize_deadline(deadline_str: str) -> str:
+    if deadline_str == "미정":
+        return deadline_str
+    try:
+        m, d = map(int, deadline_str.split('/'))
+        datetime.date(2000, m, d)
+    except (TypeError, ValueError):
+        raise ValueError("날짜는 MM/DD 형식으로 입력해주세요.")
+    return f"{m:02d}/{d:02d}"
+
 def parse_deadline(deadline_str: str, now: datetime.datetime) -> datetime.datetime:
-    m, d = map(int, deadline_str.split('/'))
+    normalized = normalize_deadline(deadline_str)
+    if normalized == "미정":
+        raise ValueError("미정은 날짜로 변환할 수 없습니다.")
+    m, d = map(int, normalized.split('/'))
     target_year = now.year
     if now.month >= 11 and m <= 2:
         target_year += 1
@@ -19,6 +33,39 @@ def parse_exam_dates(date_range_str: str, now: datetime.datetime):
     start_dt = parse_deadline(start_str.strip(), now)
     end_dt = parse_deadline(end_str.strip(), now)
     return start_dt, end_dt
+
+def truncate_discord_text(text: str, limit: int = 3900) -> str:
+    if len(text) <= limit:
+        return text
+    return text[:limit - 40].rstrip() + "\n...표시할 항목이 더 있습니다."
+
+async def cache_timetable(db, guild_id: int, date_str: str, grade: str, class_nm: str, timetable: list):
+    payload = json.dumps(timetable, ensure_ascii=False)
+    await db.execute(
+        """
+        REPLACE INTO timetable_cache
+        (guild_id, date_str, grade, class_nm, payload, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+        """,
+        (guild_id, date_str, str(grade), str(class_nm), payload, datetime.datetime.now(kst).isoformat()),
+    )
+    await db.commit()
+
+async def get_cached_timetable(db, guild_id: int, date_str: str, grade: str, class_nm: str):
+    async with db.execute(
+        """
+        SELECT payload, updated_at FROM timetable_cache
+        WHERE guild_id=? AND date_str=? AND grade=? AND class_nm=?
+        """,
+        (guild_id, date_str, str(grade), str(class_nm)),
+    ) as cursor:
+        row = await cursor.fetchone()
+    if not row:
+        return None, None
+    try:
+        return json.loads(row[0]), row[1]
+    except json.JSONDecodeError:
+        return None, None
 
 async def get_schedule_message(target_date: datetime.datetime, guild_id: int, db, fetch_neis_timetable) -> discord.Embed:
     weekday_num = target_date.weekday()
@@ -70,7 +117,15 @@ async def get_schedule_message(target_date: datetime.datetime, guild_id: int, db
         date_str = target_date.strftime("%Y%m%d")
         timetable = await fetch_neis_timetable(date_str, g_row[0], c_row[0])
         if timetable:
+            await cache_timetable(db, guild_id, date_str, g_row[0], c_row[0], timetable)
             timetable_text = "\n".join([f"**{perio}교시** │ {subject}" for perio, subject in timetable])
+        elif timetable is None:
+            cached, updated_at = await get_cached_timetable(db, guild_id, date_str, g_row[0], c_row[0])
+            if cached:
+                timetable_text = "\n".join([f"**{perio}교시** │ {subject}" for perio, subject in cached])
+                timetable_text += f"\n\n⚠️ NEIS 조회 실패로 마지막 저장본을 표시합니다.\n저장 시각: {updated_at[:16]}"
+            else:
+                timetable_text = "⚠️ NEIS 조회에 실패했습니다. API 키, 네트워크, NEIS 상태를 확인해주세요."
         else: 
             timetable_text = "❌ 나이스(NEIS)에 등록된 수업 데이터가 없습니다."
     else: 
@@ -92,7 +147,7 @@ async def get_schedule_message(target_date: datetime.datetime, guild_id: int, db
             emoji = "📙" if "숙제" in t_type else "📝" if "수행" in t_type else "📌"
             task_text += f"{emoji} **{t_type}**\n" + "\n".join([f"└ {c}" for c in contents]) + "\n\n"
             
-    embed.add_field(name="📝 마감 임박 일정", value=task_text.strip() if task_text else "내역 없음", inline=False)
+    embed.add_field(name="📝 마감 임박 일정", value=truncate_discord_text(task_text.strip() if task_text else "내역 없음", 1000), inline=False)
     
     embed.set_footer(text="SyncTask Service • 광주소프트웨어마이스터고", icon_url="https://i.imgur.com/890v9Ic.png") # 예시 아이콘
     
@@ -131,6 +186,6 @@ async def get_task_list_embed(task_type_name: str, guild_id: int, db) -> discord
     for r in tbd_tasks:
         content_text += f"`ID:{r[0]}` **{r[2]}**\n└ 마감: 미정 (⚪)\n"
         
-    embed.description = content_text.strip()
+    embed.description = truncate_discord_text(content_text.strip())
     embed.set_footer(text=f"총 {len(tasks_list)}개의 항목이 있습니다.")
     return embed

@@ -4,7 +4,7 @@ from discord import app_commands
 from discord.ui import View
 import datetime
 from utils.logger import record_log
-from utils.formatter import parse_deadline, kst, get_task_list_embed
+from utils.formatter import parse_deadline, normalize_deadline, truncate_discord_text, kst, get_task_list_embed
 from cogs.admin import SUPER_ADMINS
 
 class TaskReviewView(View):
@@ -23,6 +23,19 @@ class TaskReviewView(View):
 
         await self.bot.db.execute('INSERT INTO tasks (guild_id, task_type, deadline, content, channel_id) VALUES (?, ?, ?, ?, ?)', 
                        (interaction.guild_id, self.task_type, self.deadline, self.content, interaction.channel_id))
+        await self.bot.db.execute(
+            """
+            INSERT INTO change_logs (guild_id, user_id, action, details, created_at)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (
+                interaction.guild_id,
+                interaction.user.id,
+                "승인등록",
+                f"[{self.task_type}] {self.content} / {self.deadline}",
+                datetime.datetime.now(kst).strftime("%Y-%m-%d %H:%M:%S"),
+            ),
+        )
         await self.bot.db.commit()
         
         tasks_cog = self.bot.get_cog("TasksCog")
@@ -72,6 +85,22 @@ class TasksCog(commands.Cog):
     def cog_unload(self):
         self.auto_update_loop.cancel()
 
+    async def record_change(self, interaction: discord.Interaction, action: str, details: str):
+        await self.bot.db.execute(
+            """
+            INSERT INTO change_logs (guild_id, user_id, action, details, created_at)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (
+                interaction.guild_id,
+                interaction.user.id,
+                action,
+                details,
+                datetime.datetime.now(kst).strftime("%Y-%m-%d %H:%M:%S"),
+            ),
+        )
+        await self.bot.db.commit()
+
     async def update_dashboard(self, target_guild_id=None):
         now = datetime.datetime.now(kst)
         today_date = now.replace(hour=0, minute=0, second=0, microsecond=0)
@@ -104,6 +133,7 @@ class TasksCog(commands.Cog):
                 embed_desc += f"`ID:{t_id}` [{t_type}] {content} (**마감 미정**)\n"
                 
             if not embed_desc: embed_desc = "현재 등록된 일정이 없습니다. 푹 쉬세요!"
+            embed_desc = truncate_discord_text(embed_desc)
 
             async with self.bot.db.execute("SELECT value FROM config WHERE key='dashboard_channel' AND guild_id=?", (g_id,)) as cursor:
                 ch_row = await cursor.fetchone()
@@ -131,12 +161,10 @@ class TasksCog(commands.Cog):
     async def add_task(self, interaction: discord.Interaction, task_type: app_commands.Choice[str], deadline: str, content: str):
         await record_log(interaction, "추가_시도", f"종류:[{task_type.value}], 마감:[{deadline}], 내용:[{content}]")
         
-        if deadline != "미정":
-            try:
-                m, d = map(int, deadline.split('/'))
-                deadline = f"{m:02d}/{d:02d}"
-            except ValueError:
-                return await interaction.response.send_message("⚠️ 마감일은 `MM/DD` 형식이나 `미정`으로 입력!", ephemeral=True)
+        try:
+            deadline = normalize_deadline(deadline)
+        except ValueError:
+            return await interaction.response.send_message("⚠️ 마감일은 `MM/DD` 형식이나 `미정`으로 입력!", ephemeral=True)
 
         is_admin = interaction.user.id in SUPER_ADMINS or (hasattr(interaction.user, 'guild_permissions') and interaction.user.guild_permissions.manage_messages)
 
@@ -144,6 +172,7 @@ class TasksCog(commands.Cog):
             await self.bot.db.execute('INSERT INTO tasks (guild_id, task_type, deadline, content, channel_id) VALUES (?, ?, ?, ?, ?)', 
                            (interaction.guild_id, task_type.value, deadline, content, interaction.channel_id))
             await self.bot.db.commit()
+            await self.record_change(interaction, "추가", f"[{task_type.value}] {content} / {deadline}")
             await self.update_dashboard(interaction.guild_id)
             await interaction.response.send_message(f'✅ 즉시 등록 완료! (`{content}`)', ephemeral=True)
         else:
@@ -183,6 +212,7 @@ class TasksCog(commands.Cog):
         placeholders = ', '.join('?' for _ in id_list)
         await self.bot.db.execute(f'DELETE FROM tasks WHERE id IN ({placeholders}) AND guild_id = ?', id_list + [interaction.guild_id])
         await self.bot.db.commit()
+        await self.record_change(interaction, "삭제", f"ID: {', '.join(map(str, id_list))}")
         await interaction.response.send_message(f'🗑️ 삭제 완료! (ID: {", ".join(map(str, id_list))})', ephemeral=True)
         await self.update_dashboard(interaction.guild_id)
 
@@ -207,16 +237,16 @@ class TasksCog(commands.Cog):
         new_deadline = deadline if deadline else row[1]
         new_content = content if content else row[2]
         
-        if deadline and deadline != "미정":
+        if deadline:
             try:
-                m, d = map(int, deadline.split('/'))
-                new_deadline = f"{m:02d}/{d:02d}"
+                new_deadline = normalize_deadline(deadline)
             except ValueError:
-                return await interaction.response.send_message("⚠️ 마감일은 `MM/DD` 형식으로 입력해주세요!", ephemeral=True)
+                return await interaction.response.send_message("⚠️ 마감일은 `MM/DD` 형식이나 `미정`으로 입력해주세요!", ephemeral=True)
 
         await self.bot.db.execute("UPDATE tasks SET task_type=?, deadline=?, content=? WHERE id=? AND guild_id=?", 
                        (new_type, new_deadline, new_content, task_id, interaction.guild_id))
         await self.bot.db.commit()
+        await self.record_change(interaction, "수정", f"ID:{task_id} -> [{new_type}] {new_content} / {new_deadline}")
         await self.update_dashboard(interaction.guild_id)
         await interaction.response.send_message(f"✏️ `ID:{task_id}` 일정이 수정되었습니다!", ephemeral=True)
 
@@ -228,7 +258,7 @@ class TasksCog(commands.Cog):
         if not tasks_list: return await interaction.response.send_message("✅ 현재 등록된 일정이 없습니다!")
         msg = "📋 **[전체 일정 목록]**\n"
         for r in tasks_list: msg += f"`ID:{r[0]}` [{r[1]}] {r[3]} (마감: {r[2]})\n"
-        await interaction.response.send_message(msg)
+        await interaction.response.send_message(truncate_discord_text(msg))
 
     @app_commands.command(name="숙제", description="앞으로 남은 숙제 목록을 D-Day 순으로 보여줍니다.")
     async def homework_list(self, interaction: discord.Interaction):
@@ -242,26 +272,53 @@ class TasksCog(commands.Cog):
         embed = await get_task_list_embed("수행평가", interaction.guild_id, self.bot.db)
         await interaction.response.send_message(embed=embed)
 
+    @app_commands.command(name="변경이력", description="최근 일정 추가/수정/삭제 기록을 확인합니다.")
+    async def change_history(self, interaction: discord.Interaction):
+        await record_log(interaction, "변경이력")
+        async with self.bot.db.execute(
+            """
+            SELECT user_id, action, details, created_at
+            FROM change_logs
+            WHERE guild_id=?
+            ORDER BY id DESC
+            LIMIT 10
+            """,
+            (interaction.guild_id,),
+        ) as cursor:
+            rows = await cursor.fetchall()
+
+        if not rows:
+            return await interaction.response.send_message("아직 기록된 변경 이력이 없습니다.", ephemeral=True)
+
+        embed = discord.Embed(title="최근 일정 변경 이력", color=0x5865F2)
+        for user_id, action, details, created_at in rows:
+            embed.add_field(
+                name=f"{created_at} / {action}",
+                value=f"<@{user_id}> - {details}",
+                inline=False,
+            )
+        await interaction.response.send_message(embed=embed)
+
 
     @tasks.loop(minutes=5)
     async def auto_update_loop(self):
         if self.bot.db:
             now = datetime.datetime.now(kst)
             today_date = now.replace(hour=0, minute=0, second=0, microsecond=0)
-            async with self.bot.db.execute('SELECT id, deadline FROM tasks WHERE deadline != "미정" AND task_type != "시험범위"') as cursor:
+            async with self.bot.db.execute('SELECT id, guild_id, deadline FROM tasks WHERE deadline != "미정" AND task_type != "시험범위"') as cursor:
                 rows = await cursor.fetchall()
                 
             ids_to_delete = []
-            for t_id, d_str in rows:
+            for t_id, g_id, d_str in rows:
                 try:
                     target_date = parse_deadline(d_str, now)
                     if (target_date - today_date).days <= -2: 
-                        ids_to_delete.append(t_id)
+                        ids_to_delete.append((t_id, g_id))
                 except ValueError: pass
                 
+            for t_id, g_id in ids_to_delete:
+                await self.bot.db.execute('DELETE FROM tasks WHERE id=? AND guild_id=?', (t_id, g_id)) 
             if ids_to_delete:
-                placeholders = ', '.join('?' for _ in ids_to_delete)
-                await self.bot.db.execute(f'DELETE FROM tasks WHERE id IN ({placeholders})', ids_to_delete) 
                 await self.bot.db.commit()
             await self.update_dashboard()
 

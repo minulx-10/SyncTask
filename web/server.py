@@ -1,16 +1,30 @@
 from aiohttp import web
 import os
-import json
 import re
+import hmac
+import hashlib
+import html
 
-# .env에서 비밀번호 로드 (없으면 기본값 설정)
-ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin1234")
+ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD")
+
+def _session_secret():
+    base = (os.getenv("DISCORD_TOKEN") or "") + (ADMIN_PASSWORD or "")
+    return hashlib.sha256(base.encode("utf-8")).hexdigest()
+
+def make_session_cookie():
+    if not ADMIN_PASSWORD:
+        return ""
+    return hmac.new(_session_secret().encode("utf-8"), b"admin", hashlib.sha256).hexdigest()
+
+def is_authenticated(request):
+    if not ADMIN_PASSWORD:
+        return False
+    return hmac.compare_digest(request.cookies.get('admin_session', ''), make_session_cookie())
 
 async def auth_middleware(app, handler):
     async def middleware(request):
         if request.path.startswith('/api') or request.path == '/':
-            password = request.cookies.get('admin_pass')
-            if password != ADMIN_PASSWORD and request.path != '/login' and request.path != '/do_login':
+            if not is_authenticated(request) and request.path != '/login' and request.path != '/do_login':
                 if request.path.startswith('/api'):
                     return web.json_response({"error": "Unauthorized"}, status=401)
                 return web.HTTPFound('/login')
@@ -48,10 +62,12 @@ async def login_page(request):
     return web.Response(text=html, content_type='text/html')
 
 async def do_login(request):
+    if not ADMIN_PASSWORD:
+        return web.HTTPFound('/login?error=not_configured')
     data = await request.post()
     if data.get('password') == ADMIN_PASSWORD:
         resp = web.HTTPFound('/')
-        resp.set_cookie('admin_pass', ADMIN_PASSWORD, max_age=86400)
+        resp.set_cookie('admin_session', make_session_cookie(), max_age=86400, httponly=True, samesite='Strict')
         return resp
     return web.HTTPFound('/login?error=1')
 
@@ -82,11 +98,11 @@ async def api_get_logs_json(request):
                 parsed.append({
                     "guild_id": gid,
                     "time": match.group(2),
-                    "guild_name": match.group(3),
+                    "guild_name": html.escape(match.group(3)),
                     "guild_icon": guild_icons[gid],
-                    "user": match.group(4),
-                    "command": match.group(5),
-                    "details": match.group(6) or ""
+                    "user": html.escape(match.group(4)),
+                    "command": html.escape(match.group(5)),
+                    "details": html.escape(match.group(6) or "")
                 })
         return web.json_response(parsed[:200])
     except Exception as e:
@@ -224,6 +240,15 @@ async def admin_log_dashboard(request):
                     else renderLogs();
                 } catch (e) { console.error("Data fetch failed", e); }
             }
+            function escapeHTML(value) {
+                return String(value ?? '').replace(/[&<>"']/g, ch => ({
+                    '&': '&amp;',
+                    '<': '&lt;',
+                    '>': '&gt;',
+                    '"': '&quot;',
+                    "'": '&#39;'
+                }[ch]));
+            }
 
             function renderGrid() {
                 const serverList = document.getElementById('server-list');
@@ -234,9 +259,9 @@ async def admin_log_dashboard(request):
                     }
                 });
                 serverList.innerHTML = Object.values(servers).map(s => `
-                    <div class="server-card" onclick="selectServer('${s.id}')">
-                        <img src="${s.icon}" class="server-icon" onerror="this.src='https://cdn-icons-png.flaticon.com/512/2111/2111370.png'">
-                        <div class="server-info"><div class="server-name">${s.name}</div></div>
+                    <div class="server-card" onclick="selectServer('${escapeHTML(s.id)}')">
+                        <img src="${escapeHTML(s.icon)}" class="server-icon" onerror="this.src='https://cdn-icons-png.flaticon.com/512/2111/2111370.png'">
+                        <div class="server-info"><div class="server-name">${escapeHTML(s.name)}</div></div>
                     </div>
                 `).join('');
             }
@@ -269,25 +294,29 @@ async def admin_log_dashboard(request):
                            l.details.toLowerCase().includes(tF);
                 });
 
-                container.innerHTML = filtered.map(l => `
-                    <div class="log-item" onclick='showDetail(${JSON.stringify(l).replace(/'/g, "&apos;")})'>
+                container.innerHTML = filtered.map((l, index) => `
+                    <div class="log-item" onclick='showDetailByIndex(${index})'>
                         <div class="log-main">
-                            <span class="log-user">${l.user}</span>
-                            <span class="log-cmd">/${l.command}</span>
-                            <span class="log-details">${l.details}</span>
+                            <span class="log-user">${escapeHTML(l.user)}</span>
+                            <span class="log-cmd">/${escapeHTML(l.command)}</span>
+                            <span class="log-details">${escapeHTML(l.details)}</span>
                         </div>
-                        <div class="log-time">${l.time.split(' ')[1]}</div>
+                        <div class="log-time">${escapeHTML(l.time.split(' ')[1])}</div>
                     </div>
                 `).join('');
+                window.filteredLogs = filtered;
             }
 
+            function showDetailByIndex(index) {
+                showDetail(window.filteredLogs[index]);
+            }
             function showDetail(log) {
                 document.getElementById('modal-body').innerHTML = `
-                    <p><b>⏰ Time:</b> ${log.time}</p>
-                    <p><b>🛡️ Server:</b> ${log.guild_name} (${log.guild_id})</p>
-                    <p><b>👤 User:</b> ${log.user}</p>
-                    <p><b>⚡ Command:</b> /${log.command}</p>
-                    <p><b>📝 Details:</b> ${log.details || 'None'}</p>
+                    <p><b>⏰ Time:</b> ${escapeHTML(log.time)}</p>
+                    <p><b>🛡️ Server:</b> ${escapeHTML(log.guild_name)} (${escapeHTML(log.guild_id)})</p>
+                    <p><b>👤 User:</b> ${escapeHTML(log.user)}</p>
+                    <p><b>⚡ Command:</b> /${escapeHTML(log.command)}</p>
+                    <p><b>📝 Details:</b> ${escapeHTML(log.details || 'None')}</p>
                 `;
                 document.getElementById('logModal').style.display = "block";
             }
@@ -311,6 +340,8 @@ async def run_web_server(bot):
     
     runner = web.AppRunner(app)
     await runner.setup()
-    site = web.TCPSite(runner, '0.0.0.0', 10000)
+    host = os.getenv("DASHBOARD_HOST", "127.0.0.1")
+    port = int(os.getenv("DASHBOARD_PORT", "10000"))
+    site = web.TCPSite(runner, host, port)
     await site.start()
-    print("🌍 프리미엄 관리자 대시보드 기동 완료 (포트 10000)")
+    print(f"🌍 관리자 대시보드 기동 완료 ({host}:{port})")

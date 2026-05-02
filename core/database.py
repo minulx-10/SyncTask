@@ -20,5 +20,35 @@ async def init_db():
             PRIMARY KEY (guild_id, key)
         )
     ''')
+    await db.execute('''
+        CREATE TABLE IF NOT EXISTS user_settings (
+            guild_id INTEGER,
+            user_id INTEGER,
+            reminder_enabled INTEGER DEFAULT 0,
+            reminder_scope TEXT DEFAULT '전체',
+            PRIMARY KEY (guild_id, user_id)
+        )
+    ''')
+    await db.execute('''
+        CREATE TABLE IF NOT EXISTS change_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            guild_id INTEGER,
+            user_id INTEGER,
+            action TEXT,
+            details TEXT,
+            created_at TEXT
+        )
+    ''')
+    await db.execute('''
+        CREATE TABLE IF NOT EXISTS timetable_cache (
+            guild_id INTEGER,
+            date_str TEXT,
+            grade TEXT,
+            class_nm TEXT,
+            payload TEXT,
+            updated_at TEXT,
+            PRIMARY KEY (guild_id, date_str, grade, class_nm)
+        )
+    ''')
     await db.commit()
     return db
