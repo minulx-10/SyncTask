@@ -5,6 +5,7 @@ import datetime
 import holidays
 from utils.logger import record_log
 from utils.formatter import get_schedule_message, parse_exam_dates, normalize_deadline, parse_deadline, truncate_discord_text, kst
+from utils.ui import EXAM_COLOR, REMINDER_COLOR, embed, ok, warn
 from core.neis_api import fetch_neis_timetable
 from cogs.admin import SUPER_ADMINS, is_manager_or_admin
 
@@ -64,11 +65,11 @@ class SchoolCog(commands.Cog):
             end_date = normalize_deadline(end_date)
             formatted_date = f"{start_date}~{end_date}"
         except ValueError:
-            return await interaction.response.send_message("⚠️ 날짜는 `MM/DD` 형식으로 입력해주세요!", ephemeral=True)
+            return await interaction.response.send_message(warn("날짜는 `MM/DD` 형식으로 입력해주세요."), ephemeral=True)
         
         await self.bot.db.execute("REPLACE INTO config (guild_id, key, value) VALUES (?, ?, ?)", (interaction.guild_id, exam_type.value, formatted_date))
         await self.bot.db.commit()
-        await interaction.response.send_message(f"🗓️ 이 서버의 **{exam_type.name}** 기간이 **{formatted_date}**로 설정되었습니다!", ephemeral=True)
+        await interaction.response.send_message(ok(f"{exam_type.name} 기간을 {formatted_date}로 설정했습니다."), ephemeral=True)
 
     @app_commands.command(name="시험범위추가", description="과목별 시험 범위를 등록합니다. (일반 유저는 승인 후 등록)")
     @app_commands.choices(exam_type=[
@@ -102,14 +103,14 @@ class SchoolCog(commands.Cog):
             tasks_cog = self.bot.get_cog("TasksCog")
             if tasks_cog:
                 await tasks_cog.update_dashboard(interaction.guild_id)
-            await interaction.response.send_message(f"✅ **{exam_type.name}** `{subject}` 과목 시험 범위 등록 완료!", ephemeral=True)
+            await interaction.response.send_message(ok(f"{exam_type.name} {subject} 시험 범위를 등록했습니다."), ephemeral=True)
         else:
-            embed = discord.Embed(title="📚 시험 범위 추가 요청 (PR)", color=discord.Color.purple())
-            embed.add_field(name="시험 종류", value=exam_type.name, inline=True)
-            embed.add_field(name="과목", value=subject, inline=True)
-            embed.add_field(name="범위", value=scope, inline=False)
-            embed.add_field(name="요청자", value=interaction.user.mention, inline=False)
-            embed.set_footer(text="관리자가 승인하면 시험 범위 목록에 반영됩니다.")
+            request_embed = embed("시험 범위 등록 요청", color=EXAM_COLOR)
+            request_embed.add_field(name="시험", value=exam_type.name, inline=True)
+            request_embed.add_field(name="과목", value=subject, inline=True)
+            request_embed.add_field(name="범위", value=scope, inline=False)
+            request_embed.add_field(name="요청자", value=interaction.user.mention, inline=False)
+            request_embed.set_footer(text="승인 후 시험 범위에 반영됩니다.")
 
             target_channel = interaction.channel
             async with self.bot.db.execute("SELECT value FROM config WHERE key='admin_log_channel' AND guild_id=?", (interaction.guild_id,)) as cursor:
@@ -125,8 +126,8 @@ class SchoolCog(commands.Cog):
                     ch = self.bot.get_channel(int(dash_row[0]))
                     if ch: target_channel = ch
             
-            await target_channel.send(embed=embed, view=TaskReviewView(self.bot, "시험범위", exam_type.value, content, interaction.user.id))
-            await interaction.response.send_message("📩 시험 범위 등록 요청이 전달되었습니다! 관리자 승인 후 반영됩니다.", ephemeral=True)
+            await target_channel.send(embed=request_embed, view=TaskReviewView(self.bot, "시험범위", exam_type.value, content, interaction.user.id))
+            await interaction.response.send_message(ok("시험 범위 요청을 보냈습니다."), ephemeral=True)
 
     @app_commands.command(name="시험범위", description="등록된 시험 범위와 디데이(D-Day)를 확인합니다.")
     async def exam_scope(self, interaction: discord.Interaction):
@@ -134,7 +135,7 @@ class SchoolCog(commands.Cog):
         now = datetime.datetime.now(kst)
         today_date = now.replace(hour=0, minute=0, second=0, microsecond=0)
         
-        msg = "📚 **[시험 범위 및 D-Day]**\n\n"
+        msg = "**시험 범위**\n\n"
         for e_key, e_name in [("midterm_date", "중간고사"), ("final_date", "기말고사")]:
             async with self.bot.db.execute("SELECT value FROM config WHERE key=? AND guild_id=?", (e_key, interaction.guild_id)) as cursor:
                 row = await cursor.fetchone()
@@ -144,17 +145,17 @@ class SchoolCog(commands.Cog):
                         days_to_start = (start_dt.replace(hour=0, minute=0, second=0, microsecond=0) - today_date).days
                         days_to_end = (end_dt.replace(hour=0, minute=0, second=0, microsecond=0) - today_date).days
                         
-                        if days_to_start > 0: msg += f"🚨 **{e_name} (기간: {row[0]} / D-{days_to_start})**\n"
-                        elif days_to_end >= 0: msg += f"🔥 **{e_name} 진행 중! (기간: {row[0]} / {abs(days_to_start) + 1}일차)**\n"
-                        else: msg += f"✅ **{e_name} (기간: {row[0]} / 종료)**\n"
-                    except Exception: msg += f"🚨 **{e_name} (기간: {row[0]})**\n"
-                else: msg += f"🚨 **{e_name} (일정 미등록)**\n"
+                        if days_to_start > 0: msg += f"**{e_name}** · {row[0]} · D-{days_to_start}\n"
+                        elif days_to_end >= 0: msg += f"**{e_name}** · 진행 중 · {abs(days_to_start) + 1}일차\n"
+                        else: msg += f"**{e_name}** · {row[0]} · 종료\n"
+                    except Exception: msg += f"**{e_name}** · {row[0]}\n"
+                else: msg += f"**{e_name}** · 일정 미등록\n"
             
             async with self.bot.db.execute("SELECT id, content FROM tasks WHERE task_type='시험범위' AND deadline=? AND guild_id=?", (e_name, interaction.guild_id)) as cursor:
                 tasks = await cursor.fetchall()
                 if tasks:
-                    for t_id, content in tasks: msg += f"  • `ID:{t_id}` {content}\n"
-                else: msg += "  • 아직 등록된 시험 범위가 없습니다.\n"
+                    for t_id, content in tasks: msg += f"- `ID:{t_id}` {content}\n"
+                else: msg += "- 등록된 시험 범위가 없습니다.\n"
             msg += "\n"
             
         await interaction.response.send_message(msg.strip())
@@ -178,7 +179,7 @@ class SchoolCog(commands.Cog):
         )
         await self.bot.db.commit()
         status = "켜졌습니다" if enabled else "꺼졌습니다"
-        await interaction.response.send_message(f"개인 알림이 **{status}**. 범위: `{selected_scope}`", ephemeral=True)
+        await interaction.response.send_message(ok(f"개인 알림이 {status}. 범위: `{selected_scope}`"), ephemeral=True)
 
     @app_commands.command(name="주간요약", description="이번 주 남은 숙제, 수행평가, 시험 범위를 요약합니다.")
     async def weekly_summary(self, interaction: discord.Interaction):
@@ -207,24 +208,24 @@ class SchoolCog(commands.Cog):
                 upcoming.append(((target - today_date).days, t_id, task_type, deadline, content))
 
         upcoming.sort(key=lambda item: (item[0], item[2]))
-        embed = discord.Embed(
+        summary_embed = embed(
             title="이번 주 학급 일정 요약",
             description=f"{today_date.strftime('%m/%d')}~{week_end.strftime('%m/%d')} 기준",
-            color=0x57F287,
+            color=REMINDER_COLOR,
         )
         if upcoming:
             text = ""
             for days, t_id, task_type, deadline, content in upcoming:
                 d_txt = "오늘" if days == 0 else f"D-{days}"
-                text += f"`ID:{t_id}` [{task_type}] {content} - {deadline} / {d_txt}\n"
-            embed.add_field(name="이번 주 마감", value=truncate_discord_text(text, 1000), inline=False)
+                text += f"`ID:{t_id}` [{task_type}] {content} · {deadline} · {d_txt}\n"
+            summary_embed.add_field(name="이번 주 마감", value=truncate_discord_text(text, 1000), inline=False)
         else:
-            embed.add_field(name="이번 주 마감", value="이번 주 안에 마감되는 일정이 없습니다.", inline=False)
+            summary_embed.add_field(name="이번 주 마감", value="이번 주 안에 마감되는 일정이 없습니다.", inline=False)
 
         if tbd:
             text = "\n".join([f"`ID:{t_id}` [{task_type}] {content}" for t_id, task_type, _, content in tbd[:8]])
-            embed.add_field(name="마감 미정", value=text, inline=False)
-        await interaction.response.send_message(embed=embed)
+            summary_embed.add_field(name="마감 미정", value=text, inline=False)
+        await interaction.response.send_message(embed=summary_embed)
 
     @tasks.loop(time=[datetime.time(hour=6, minute=30, tzinfo=kst), datetime.time(hour=19, minute=30, tzinfo=kst)])
     async def send_reminder(self):
@@ -235,18 +236,18 @@ class SchoolCog(commands.Cog):
         
         target_date = next_school_day(now) if is_evening else now
         if is_evening:
-            prefix = "🌙 **[내일 일정 미리보기]**\n"
+            prefix = "**내일 일정 미리보기**"
         else: 
-            prefix = "☀️ **[오늘 일정 알림]**\n"
+            prefix = "**오늘 일정 알림**"
 
         async with self.bot.db.execute("SELECT guild_id, value FROM config WHERE key='dashboard_channel'") as cursor:
             rows = await cursor.fetchall()
             
         for g_id, ch_id in rows:
+            schedule_embed = await get_schedule_message(target_date, g_id, self.bot.db, fetch_neis_timetable)
             channel = self.bot.get_channel(int(ch_id))
             if channel: 
-                embed = await get_schedule_message(target_date, g_id, self.bot.db, fetch_neis_timetable)
-                await channel.send(content=f"{prefix}", embed=embed)
+                await channel.send(content=prefix, embed=schedule_embed)
 
             async with self.bot.db.execute(
                 """
@@ -263,7 +264,7 @@ class SchoolCog(commands.Cog):
                     user = self.bot.get_user(int(user_id)) or await self.bot.fetch_user(int(user_id))
                     if not user:
                         continue
-                    await user.send(content=f"{prefix}범위: {scope}", embed=embed)
+                    await user.send(content=f"{prefix}\n범위: {scope}", embed=schedule_embed)
                 except discord.HTTPException:
                     pass
 

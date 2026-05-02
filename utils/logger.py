@@ -13,7 +13,7 @@ async def record_log(interaction: discord.Interaction, command_name, details="",
     user_name = interaction.user.name
     
     # [GID:ID] [TIME] [GUILD] [USER] COMMAND [DETAILS]
-    log_msg = f"[GID:{guild_id}] [{now}] [{guild_name}] 👤{user_name}: /{command_name}" + (f" ({details})\n" if details else "\n")
+    log_msg = f"[GID:{guild_id}] [{now}] [{guild_name}] {user_name}: /{command_name}" + (f" ({details})\n" if details else "\n")
     
     BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     log_path = os.path.join(BASE_DIR, "alimi_cmd_log.txt")

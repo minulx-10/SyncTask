@@ -85,7 +85,7 @@ async def api_get_logs_json(request):
         guild_icons = {}
 
         for line in reversed(lines):
-            match = re.match(r"\[GID:(.*?)\] \[(.*?)\] \[(.*?)\] 👤(.*?): \/(.*?)(?: \((.*)\))?$", line.strip())
+            match = re.match(r"\[GID:(.*?)\] \[(.*?)\] \[(.*?)\] (?:👤)?(.*?): \/(.*?)(?: \((.*)\))?$", line.strip())
             if match:
                 gid = match.group(1)
                 if gid not in guild_icons:
@@ -118,24 +118,24 @@ async def admin_log_dashboard(request):
         <title>SyncTask Admin Dashboard</title>
         <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css">
         <style>
-            :root { --bg: #0b0e11; --card: #15191d; --accent: #5865F2; --text: #ffffff; --text-m: #8e9297; }
+            :root { --bg: #0f1115; --card: #181b20; --line: #2a2e35; --accent: #5865F2; --text: #f5f6f8; --text-m: #9aa0a6; }
             * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Pretendard', sans-serif; }
             body { background: var(--bg); color: var(--text); overflow-x: hidden; }
             
             .container { max-width: 1200px; margin: 0 auto; padding: 40px 20px; }
             header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 40px; }
             .brand { display: flex; align-items: center; gap: 12px; }
-            .brand h1 { font-size: 1.6rem; font-weight: 800; background: linear-gradient(45deg, #5865F2, #a370f7); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
-            .status-dot { width: 10px; height: 10px; background: #3ba55c; border-radius: 50%; box-shadow: 0 0 10px #3ba55c; }
+            .brand h1 { font-size: 1.35rem; font-weight: 700; color: var(--text); }
+            .status-dot { width: 9px; height: 9px; background: #3ba55c; border-radius: 50%; }
 
             /* Server Grid */
             .server-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 25px; }
             .server-card { 
-                background: var(--card); border-radius: 18px; overflow: hidden; cursor: pointer; 
-                transition: all 0.3s ease; border: 1px solid rgba(255,255,255,0.05);
+                background: var(--card); border-radius: 8px; overflow: hidden; cursor: pointer; 
+                transition: border-color 0.2s ease, background 0.2s ease; border: 1px solid var(--line);
                 display: flex; flex-direction: column;
             }
-            .server-card:hover { transform: translateY(-5px); border-color: var(--accent); box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+            .server-card:hover { border-color: var(--accent); background: #1d2128; }
             .server-icon { width: 100%; aspect-ratio: 1/1; object-fit: cover; background: #2f3136; }
             .server-info { padding: 12px; text-align: center; background: rgba(0,0,0,0.2); }
             .server-name { font-weight: 600; font-size: 0.85rem; color: var(--text-m); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -146,21 +146,21 @@ async def admin_log_dashboard(request):
             
             .view-header { margin-bottom: 30px; }
             .top-actions { display: flex; align-items: center; gap: 15px; margin-bottom: 20px; }
-            .back-btn { background: var(--card); border: 1px solid #333; color: white; padding: 10px 18px; border-radius: 12px; cursor: pointer; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+            .back-btn { background: var(--card); border: 1px solid var(--line); color: white; padding: 10px 18px; border-radius: 8px; cursor: pointer; font-weight: 600; display: flex; align-items: center; gap: 8px; }
             .back-btn:hover { background: #25292e; border-color: var(--accent); }
 
             .filter-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
             .filter-item { position: relative; }
             .filter-item input { 
                 width: 100%; background: var(--card); border: 1px solid #333; padding: 12px 15px 12px 40px; 
-                border-radius: 12px; color: white; font-size: 0.9rem; outline: none; transition: 0.2s;
+                border-radius: 8px; color: white; font-size: 0.9rem; outline: none; transition: 0.2s;
             }
             .filter-item input:focus { border-color: var(--accent); }
             .filter-icon { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); font-size: 0.9rem; color: var(--text-m); }
 
             .log-list { display: flex; flex-direction: column; gap: 10px; }
             .log-item { 
-                background: var(--card); padding: 15px 20px; border-radius: 14px; display: flex; justify-content: space-between; 
+                background: var(--card); padding: 15px 20px; border-radius: 8px; display: flex; justify-content: space-between; 
                 align-items: center; border: 1px solid transparent; transition: 0.2s; cursor: pointer;
             }
             .log-item:hover { border-color: rgba(255,255,255,0.1); background: #1c2126; }
@@ -174,7 +174,7 @@ async def admin_log_dashboard(request):
             .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); backdrop-filter: blur(8px); z-index: 1000; }
             .modal-content { 
                 position: relative; background: #1e1e1e; width: 90%; max-width: 500px; margin: 100px auto; 
-                padding: 40px; border-radius: 30px; border: 1px solid #333; box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+                padding: 40px; border-radius: 8px; border: 1px solid #333; box-shadow: 0 20px 50px rgba(0,0,0,0.5);
             }
             .modal-close { position: absolute; right: 25px; top: 25px; cursor: pointer; font-size: 1.5rem; color: var(--text-m); }
             .modal-header { font-size: 1.4rem; font-weight: 800; margin-bottom: 25px; color: var(--accent); border-bottom: 1px solid #333; padding-bottom: 15px; }
@@ -189,7 +189,7 @@ async def admin_log_dashboard(request):
                     <div class="status-dot"></div>
                     <h1>SyncTask Dashboard</h1>
                 </div>
-                <div style="font-size: 0.9rem; color: var(--text-m); font-weight: 600;">CCTV Monitoring System</div>
+                <div style="font-size: 0.9rem; color: var(--text-m); font-weight: 600;">운영 로그</div>
             </header>
 
             <div id="grid-view">
@@ -203,15 +203,15 @@ async def admin_log_dashboard(request):
                     </div>
                     <div class="filter-grid">
                         <div class="filter-item">
-                            <span class="filter-icon">👤</span>
+                            <span class="filter-icon">U</span>
                             <input type="text" id="filter-user" placeholder="유저명 검색..." oninput="renderLogs()">
                         </div>
                         <div class="filter-item">
-                            <span class="filter-icon">⚡</span>
+                            <span class="filter-icon">/</span>
                             <input type="text" id="filter-cmd" placeholder="명령어 검색..." oninput="renderLogs()">
                         </div>
                         <div class="filter-item">
-                            <span class="filter-icon">📄</span>
+                            <span class="filter-icon">T</span>
                             <input type="text" id="filter-content" placeholder="내용 검색..." oninput="renderLogs()">
                         </div>
                     </div>
@@ -312,11 +312,11 @@ async def admin_log_dashboard(request):
             }
             function showDetail(log) {
                 document.getElementById('modal-body').innerHTML = `
-                    <p><b>⏰ Time:</b> ${escapeHTML(log.time)}</p>
-                    <p><b>🛡️ Server:</b> ${escapeHTML(log.guild_name)} (${escapeHTML(log.guild_id)})</p>
-                    <p><b>👤 User:</b> ${escapeHTML(log.user)}</p>
-                    <p><b>⚡ Command:</b> /${escapeHTML(log.command)}</p>
-                    <p><b>📝 Details:</b> ${escapeHTML(log.details || 'None')}</p>
+                    <p><b>Time:</b> ${escapeHTML(log.time)}</p>
+                    <p><b>Server:</b> ${escapeHTML(log.guild_name)} (${escapeHTML(log.guild_id)})</p>
+                    <p><b>User:</b> ${escapeHTML(log.user)}</p>
+                    <p><b>Command:</b> /${escapeHTML(log.command)}</p>
+                    <p><b>Details:</b> ${escapeHTML(log.details || 'None')}</p>
                 `;
                 document.getElementById('logModal').style.display = "block";
             }
@@ -344,4 +344,4 @@ async def run_web_server(bot):
     port = int(os.getenv("DASHBOARD_PORT", "10000"))
     site = web.TCPSite(runner, host, port)
     await site.start()
-    print(f"🌍 관리자 대시보드 기동 완료 ({host}:{port})")
+    print(f"관리자 대시보드 기동 완료 ({host}:{port})")
