@@ -228,7 +228,7 @@ async def admin_log_dashboard(request):
                 cursor: pointer; transition: 0.15s;
             }
             .log:hover { border-color: var(--border); background: #1a1d24; }
-            .log-time { font-size: 0.75rem; color: var(--text-d); font-family: 'SF Mono', 'Fira Code', monospace; min-width: 55px; flex-shrink: 0; }
+            .log-time { font-size: 0.75rem; color: var(--text-d); font-family: 'SF Mono', 'Fira Code', monospace; min-width: 85px; flex-shrink: 0; }
             .log-user { font-weight: 600; color: var(--accent); min-width: 80px; font-size: 0.85rem; flex-shrink: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
             .log-cmd {
                 font-size: 0.8rem; font-weight: 600; color: #fff;
@@ -364,7 +364,7 @@ async def admin_log_dashboard(request):
 
                 el.innerHTML = filteredCache.map((l, i) => {
                     const t = l.time.split(' ');
-                    const timeStr = t.length > 1 ? t[1].substring(0, 5) : t[0];
+                    const timeStr = t.length > 1 ? `${t[0].substring(5).replace('-', '/')} ${t[1].substring(0, 5)}` : t[0];
                     return `<div class="log" onclick="showDetail(${i})"><span class="log-time">${esc(timeStr)}</span><span class="log-user">${esc(l.user)}</span><span class="log-cmd">/${esc(l.command)}</span><span class="log-detail">${esc(l.details)}</span></div>`;
                 }).join('');
             }
