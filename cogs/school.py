@@ -6,11 +6,11 @@ import holidays
 from utils.logger import record_log
 from utils.formatter import get_schedule_message, parse_exam_dates, normalize_deadline, parse_deadline, truncate_discord_text, kst
 from utils.ui import (
-    EXAM_COLOR, REMINDER_COLOR, SCHEDULE_COLOR, DIVIDER,
+    EXAM_COLOR, REMINDER_COLOR, SCHEDULE_COLOR, SUCCESS_COLOR, DIVIDER,
     E_EXAM, E_SCHEDULE, E_REMINDER,
     embed, ok, warn,
 )
-from core.neis_api import fetch_neis_timetable, fetch_neis_school_schedule
+from core.neis_api import fetch_neis_timetable, fetch_neis_school_schedule, fetch_neis_exam_dates
 from cogs.admin import SUPER_ADMINS, is_manager_or_admin
 
 def next_school_day(start_date: datetime.datetime) -> datetime.datetime:
@@ -74,6 +74,47 @@ class SchoolCog(commands.Cog):
         await self.bot.db.execute("REPLACE INTO config (guild_id, key, value) VALUES (?, ?, ?)", (interaction.guild_id, exam_type.value, formatted_date))
         await self.bot.db.commit()
         await interaction.response.send_message(ok(f"**{exam_type.name}** 기간을 `{formatted_date}`로 설정했습니다."), ephemeral=True)
+
+    @app_commands.command(name="시험일정동기화", description="NEIS 학사일정에서 중간/기말고사 날짜를 자동으로 가져와 설정합니다.")
+    @is_manager_or_admin()
+    async def sync_exam_dates(self, interaction: discord.Interaction):
+        await record_log(interaction, "시험일정동기화")
+        await interaction.response.defer(ephemeral=True)
+
+        now = datetime.datetime.now(kst)
+        exam_data = await fetch_neis_exam_dates(now.year)
+
+        if not exam_data:
+            return await interaction.followup.send(
+                warn("올해 학사일정에서 중간고사/기말고사 일정을 찾지 못했습니다.\n"
+                     "아직 NEIS에 등록되지 않았을 수 있어요."),
+                ephemeral=True,
+            )
+
+        result_lines = []
+        name_map = {"midterm_date": "중간고사", "final_date": "기말고사"}
+
+        for key, date_str in exam_data.items():
+            await self.bot.db.execute(
+                "REPLACE INTO config (guild_id, key, value) VALUES (?, ?, ?)",
+                (interaction.guild_id, key, date_str),
+            )
+            result_lines.append(f"{E_EXAM} **{name_map[key]}** · `{date_str}`")
+
+        await self.bot.db.commit()
+
+        sync_embed = embed(
+            title=f"{E_EXAM}  시험 일정 자동 동기화 완료",
+            description="NEIS 학사일정에서 감지된 시험 일정을\n자동으로 설정했습니다.",
+            color=SUCCESS_COLOR,
+        )
+        sync_embed.add_field(
+            name="📅 감지된 일정",
+            value="\n".join(result_lines),
+            inline=False,
+        )
+        sync_embed.set_footer(text="💡 /시험일정설정 으로 수동 수정도 가능합니다.")
+        await interaction.followup.send(embed=sync_embed, ephemeral=True)
 
     @app_commands.command(name="시험범위추가", description="과목별 시험 범위를 등록합니다. (일반 유저는 승인 후 등록)")
     @app_commands.choices(exam_type=[

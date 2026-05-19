@@ -18,7 +18,7 @@ async def get_dashboard_url():
     if public_url:
         return public_url, True  # 명시적으로 설정된 공개 URL → 접근 가능
 
-    host = os.getenv("DASHBOARD_HOST", "127.0.0.1")
+    host = os.getenv("DASHBOARD_HOST", "0.0.0.0")
     port = os.getenv("DASHBOARD_PORT", "10000")
 
     if host in ("0.0.0.0", "::"):
@@ -138,9 +138,12 @@ class SyncTaskBot(commands.Bot):
                         name="🌐 대시보드",
                         value=(
                             f"로컬 주소: `{dashboard_url}`\n"
-                            "⚠️ 외부에서 접근할 수 없습니다.\n"
-                            "공개 URL이 필요하면 `.env`에\n"
-                            "`DASHBOARD_PUBLIC_URL`을 설정하세요."
+                            "⚠️ 외부에서 접근할 수 없습니다.\n\n"
+                            "**해결 방법 (택 1):**\n"
+                            "① 서버 방화벽에서 포트 개방:\n"
+                            "　`sudo ufw allow 10000`\n"
+                            "② 또는 `.env`에 공개 URL 설정:\n"
+                            "　`DASHBOARD_PUBLIC_URL=https://...`"
                         ),
                         inline=False,
                     )

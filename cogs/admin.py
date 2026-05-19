@@ -73,7 +73,7 @@ class AdminCog(commands.Cog):
         )
         help_embed.add_field(
             name="📌 관리",
-            value="`/추가` `/수정` `/삭제`\n`/시험일정설정` `/시험범위추가` `/변경이력`",
+            value="`/추가` `/수정` `/삭제`\n`/시험일정설정` `/시험일정동기화` `/시험범위추가` `/변경이력`",
             inline=False,
         )
         help_embed.add_field(

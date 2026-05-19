@@ -84,3 +84,74 @@ async def fetch_neis_school_schedule(start_date: str, end_date: str) -> list:
     except Exception:
         return None
     return None
+
+
+async def fetch_neis_exam_dates(year: int) -> dict:
+    """
+    해당 연도의 학사일정에서 중간고사/기말고사 날짜를 자동 감지한다.
+    반환: {"midterm_date": "MM/DD~MM/DD", "final_date": "MM/DD~MM/DD"} 또는 빈 dict
+    """
+    if not os.getenv("NEIS_API_KEY"):
+        return {}
+
+    url = "https://open.neis.go.kr/hub/SchoolSchedule"
+    # 1년치 전체 조회 (3월~다음해 2월)
+    start_date = f"{year}0301"
+    end_date = f"{year + 1}0228"
+
+    params = {
+        "KEY": os.getenv("NEIS_API_KEY"),
+        "Type": "json", "pIndex": 1, "pSize": 500,
+        "ATPT_OFCDC_SC_CODE": "F10", "SD_SCHUL_CODE": "7380292",
+        "AA_FROM_YMD": start_date, "AA_TO_YMD": end_date
+    }
+
+    try:
+        async with aiohttp.ClientSession() as session:
+            timeout = aiohttp.ClientTimeout(total=10)
+            async with session.get(url, params=params, timeout=timeout) as resp:
+                if resp.status != 200:
+                    return {}
+                try:
+                    data = await resp.json()
+                except aiohttp.ContentTypeError:
+                    return {}
+
+                if "SchoolSchedule" not in data:
+                    return {}
+
+                rows = data["SchoolSchedule"][1]["row"]
+
+                # "중간고사", "기말고사" 키워드가 포함된 행사를 찾아 날짜를 수집
+                midterm_dates = []
+                final_dates = []
+
+                for r in rows:
+                    name = r["EVENT_NM"]
+                    date = r["AA_YMD"]  # YYYYMMDD
+                    if "중간" in name and ("고사" in name or "시험" in name or "평가" in name):
+                        midterm_dates.append(date)
+                    elif "기말" in name and ("고사" in name or "시험" in name or "평가" in name):
+                        final_dates.append(date)
+
+                result = {}
+
+                if midterm_dates:
+                    midterm_dates.sort()
+                    s = midterm_dates[0]
+                    e = midterm_dates[-1]
+                    s_fmt = f"{int(s[4:6]):02d}/{int(s[6:8]):02d}"
+                    e_fmt = f"{int(e[4:6]):02d}/{int(e[6:8]):02d}"
+                    result["midterm_date"] = f"{s_fmt}~{e_fmt}" if s != e else s_fmt
+
+                if final_dates:
+                    final_dates.sort()
+                    s = final_dates[0]
+                    e = final_dates[-1]
+                    s_fmt = f"{int(s[4:6]):02d}/{int(s[6:8]):02d}"
+                    e_fmt = f"{int(e[4:6]):02d}/{int(e[6:8]):02d}"
+                    result["final_date"] = f"{s_fmt}~{e_fmt}" if s != e else s_fmt
+
+                return result
+    except Exception:
+        return {}
