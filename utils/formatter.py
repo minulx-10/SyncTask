@@ -1,7 +1,11 @@
 import datetime
 import discord
 import json
-from utils.ui import SCHEDULE_COLOR, TASK_COLOR, dated_embed, embed
+from utils.ui import (
+    SCHEDULE_COLOR, TASK_COLOR, EXAM_COLOR, DIVIDER,
+    E_TODAY, E_TASK, E_EXAM, E_CLOCK,
+    dated_embed, embed,
+)
 
 kst = datetime.timezone(datetime.timedelta(hours=9))
 
@@ -68,19 +72,25 @@ async def get_cached_timetable(db, guild_id: int, date_str: str, grade: str, cla
     except json.JSONDecodeError:
         return None, None
 
+# ── 교시 번호를 원형 숫자 이모지로 변환 ──
+_PERIOD_EMOJI = {
+    1: "①", 2: "②", 3: "③", 4: "④",
+    5: "⑤", 6: "⑥", 7: "⑦", 8: "⑧",
+}
+
 async def get_schedule_message(target_date: datetime.datetime, guild_id: int, db, fetch_neis_timetable) -> discord.Embed:
     weekday_num = target_date.weekday()
     weekday_str = ['월', '화', '수', '목', '금', '토', '일'][weekday_num]
     
     item = dated_embed(
-        title=f"{target_date.month}월 {target_date.day}일 {weekday_str}요일",
-        description=f"{target_date.strftime('%Y-%m-%d')} 기준",
+        title=f"{E_TODAY}  {target_date.month}월 {target_date.day}일 ({weekday_str})",
         color=SCHEDULE_COLOR,
     )
     
     now = datetime.datetime.now(kst)
     today_date = now.replace(hour=0, minute=0, second=0, microsecond=0) 
     
+    # ── 시험 D-Day ──
     exam_info = ""
     for e_key, e_name in [("midterm_date", "중간고사"), ("final_date", "기말고사")]:
         async with db.execute("SELECT value FROM config WHERE key=? AND guild_id=?", (e_key, guild_id)) as cursor:
@@ -92,15 +102,16 @@ async def get_schedule_message(target_date: datetime.datetime, guild_id: int, db
                     days_to_end = (end_dt.replace(hour=0, minute=0, second=0, microsecond=0) - today_date).days
                     
                     if days_to_start > 0:
-                        exam_info += f"{e_name} · D-{days_to_start}\n"
+                        exam_info += f"{E_EXAM} **{e_name}** · `D-{days_to_start}`\n"
                     elif days_to_end >= 0:
                         day_num = abs(days_to_start) + 1
-                        exam_info += f"{e_name} · 진행 중 · {day_num}일차\n"
+                        exam_info += f"🔥 **{e_name}** · 진행 중 · {day_num}일차\n"
                 except Exception: pass
     
     if exam_info:
-        item.add_field(name="학사 일정", value=exam_info.strip(), inline=False)
+        item.add_field(name=f"{DIVIDER}", value=exam_info.strip(), inline=False)
         
+    # ── 시간표 ──
     async with db.execute("SELECT value FROM config WHERE key='grade' AND guild_id=?", (guild_id,)) as cursor:
         g_row = await cursor.fetchone()
     async with db.execute("SELECT value FROM config WHERE key='class_nm' AND guild_id=?", (guild_id,)) as cursor:
@@ -108,27 +119,36 @@ async def get_schedule_message(target_date: datetime.datetime, guild_id: int, db
 
     timetable_text = ""
     if weekday_num >= 5: 
-        timetable_text = "휴일입니다."
+        timetable_text = "🎉 오늘은 쉬는 날!"
     elif g_row and c_row:
         date_str = target_date.strftime("%Y%m%d")
         timetable = await fetch_neis_timetable(date_str, g_row[0], c_row[0])
         if timetable:
             await cache_timetable(db, guild_id, date_str, g_row[0], c_row[0], timetable)
-            timetable_text = "\n".join([f"**{perio}교시** │ {subject}" for perio, subject in timetable])
+            lines = []
+            for perio, subject in timetable:
+                emoji = _PERIOD_EMOJI.get(perio, f"{perio}")
+                lines.append(f"{emoji}  {subject}")
+            timetable_text = "\n".join(lines)
         elif timetable is None:
             cached, updated_at = await get_cached_timetable(db, guild_id, date_str, g_row[0], c_row[0])
             if cached:
-                timetable_text = "\n".join([f"**{perio}교시** │ {subject}" for perio, subject in cached])
-                timetable_text += f"\n\nNEIS 조회 실패로 저장본을 표시합니다.\n저장 시각: {updated_at[:16]}"
+                lines = []
+                for perio, subject in cached:
+                    emoji = _PERIOD_EMOJI.get(perio, f"{perio}")
+                    lines.append(f"{emoji}  {subject}")
+                timetable_text = "\n".join(lines)
+                timetable_text += f"\n\n{E_CLOCK} *NEIS 조회 실패 · 저장본 표시 ({updated_at[:16]})*"
             else:
-                timetable_text = "NEIS 조회에 실패했습니다. API 키와 네트워크 상태를 확인해주세요."
+                timetable_text = "⚠️ NEIS 조회에 실패했습니다."
         else: 
-            timetable_text = "NEIS에 등록된 수업 데이터가 없습니다."
+            timetable_text = "등록된 수업 데이터가 없습니다."
     else: 
-        timetable_text = "`/학급설정`으로 학년과 반을 먼저 설정해주세요."
+        timetable_text = "`/학급설정`으로 학년·반을 먼저 설정해주세요."
     
-    item.add_field(name="시간표", value=timetable_text, inline=False)
+    item.add_field(name="📚 시간표", value=timetable_text, inline=False)
         
+    # ── 마감 일정 ──
     async with db.execute('SELECT task_type, content FROM tasks WHERE deadline = ? AND guild_id = ?', (target_date.strftime("%m/%d"), guild_id)) as cursor:
         target_tasks = await cursor.fetchall()
     
@@ -139,9 +159,10 @@ async def get_schedule_message(target_date: datetime.datetime, guild_id: int, db
         tasks_dict = {}
         for t_type, content in target_tasks: tasks_dict.setdefault(t_type, []).append(content)
         for t_type, contents in tasks_dict.items():
-            task_text += f"**{t_type}**\n" + "\n".join([f"- {c}" for c in contents]) + "\n\n"
+            icon = "📝" if "시험" in t_type else "📌"
+            task_text += f"{icon} **{t_type}**\n" + "\n".join([f"　└ {c}" for c in contents]) + "\n"
             
-    item.add_field(name="마감 일정", value=truncate_discord_text(task_text.strip() if task_text else "내역 없음", 1000), inline=False)
+    item.add_field(name=f"{E_TASK} 마감 일정", value=truncate_discord_text(task_text.strip() if task_text else "내역 없음", 1000), inline=False)
     
     return item
 
@@ -152,7 +173,8 @@ async def get_task_list_embed(task_type_name: str, guild_id: int, db) -> discord
     async with db.execute('SELECT id, deadline, content FROM tasks WHERE task_type = ? AND guild_id = ?', (task_type_name, guild_id)) as cursor:
         tasks_list = await cursor.fetchall()
     
-    item = embed(f"남은 {task_type_name}", color=TASK_COLOR)
+    icon = E_EXAM if "시험" in task_type_name else E_TASK
+    item = embed(f"{icon}  남은 {task_type_name}", color=TASK_COLOR)
     
     if not tasks_list:
         item.description = f"등록된 {task_type_name} 일정이 없습니다."
@@ -171,12 +193,19 @@ async def get_task_list_embed(task_type_name: str, guild_id: int, db) -> discord
     
     content_text = ""
     for days, r in dated_tasks:
-        d_txt = "오늘" if days == 0 else (f"D+{-days} 종료" if days < 0 else f"D-{days}")
-        content_text += f"`ID:{r[0]}` {r[2]}\n마감: {r[1]} · {d_txt}\n"
+        if days == 0:
+            d_txt = "🔴 오늘"
+        elif days < 0:
+            d_txt = f"⬛ D+{-days}"
+        elif days <= 3:
+            d_txt = f"🟡 D-{days}"
+        else:
+            d_txt = f"🟢 D-{days}"
+        content_text += f"`#{r[0]}` {r[2]}\n　　{r[1]} · {d_txt}\n"
     
     for r in tbd_tasks:
-        content_text += f"`ID:{r[0]}` {r[2]}\n마감: 미정\n"
+        content_text += f"`#{r[0]}` {r[2]}\n　　마감 미정\n"
         
     item.description = truncate_discord_text(content_text.strip())
-    item.set_footer(text=f"총 {len(tasks_list)}개")
+    item.set_footer(text=f"총 {len(tasks_list)}개 · {DIVIDER}")
     return item

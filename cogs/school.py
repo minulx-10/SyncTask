@@ -5,7 +5,11 @@ import datetime
 import holidays
 from utils.logger import record_log
 from utils.formatter import get_schedule_message, parse_exam_dates, normalize_deadline, parse_deadline, truncate_discord_text, kst
-from utils.ui import EXAM_COLOR, REMINDER_COLOR, SCHEDULE_COLOR, embed, ok, warn
+from utils.ui import (
+    EXAM_COLOR, REMINDER_COLOR, SCHEDULE_COLOR, DIVIDER,
+    E_EXAM, E_SCHEDULE, E_REMINDER,
+    embed, ok, warn,
+)
 from core.neis_api import fetch_neis_timetable, fetch_neis_school_schedule
 from cogs.admin import SUPER_ADMINS, is_manager_or_admin
 
@@ -69,7 +73,7 @@ class SchoolCog(commands.Cog):
         
         await self.bot.db.execute("REPLACE INTO config (guild_id, key, value) VALUES (?, ?, ?)", (interaction.guild_id, exam_type.value, formatted_date))
         await self.bot.db.commit()
-        await interaction.response.send_message(ok(f"{exam_type.name} 기간을 {formatted_date}로 설정했습니다."), ephemeral=True)
+        await interaction.response.send_message(ok(f"**{exam_type.name}** 기간을 `{formatted_date}`로 설정했습니다."), ephemeral=True)
 
     @app_commands.command(name="시험범위추가", description="과목별 시험 범위를 등록합니다. (일반 유저는 승인 후 등록)")
     @app_commands.choices(exam_type=[
@@ -103,9 +107,9 @@ class SchoolCog(commands.Cog):
             tasks_cog = self.bot.get_cog("TasksCog")
             if tasks_cog:
                 await tasks_cog.update_dashboard(interaction.guild_id)
-            await interaction.response.send_message(ok(f"{exam_type.name} {subject} 시험 범위를 등록했습니다."), ephemeral=True)
+            await interaction.response.send_message(ok(f"**{exam_type.name}** {subject} 시험 범위를 등록했습니다."), ephemeral=True)
         else:
-            request_embed = embed("시험 범위 등록 요청", color=EXAM_COLOR)
+            request_embed = embed(f"{E_EXAM}  시험 범위 등록 요청", color=EXAM_COLOR)
             request_embed.add_field(name="시험", value=exam_type.name, inline=True)
             request_embed.add_field(name="과목", value=subject, inline=True)
             request_embed.add_field(name="범위", value=scope, inline=False)
@@ -135,8 +139,10 @@ class SchoolCog(commands.Cog):
         now = datetime.datetime.now(kst)
         today_date = now.replace(hour=0, minute=0, second=0, microsecond=0)
         
-        msg = "**시험 범위**\n\n"
+        scope_embed = embed(f"{E_EXAM}  시험 범위", color=EXAM_COLOR)
+        
         for e_key, e_name in [("midterm_date", "중간고사"), ("final_date", "기말고사")]:
+            field_value = ""
             async with self.bot.db.execute("SELECT value FROM config WHERE key=? AND guild_id=?", (e_key, interaction.guild_id)) as cursor:
                 row = await cursor.fetchone()
                 if row:
@@ -145,20 +151,28 @@ class SchoolCog(commands.Cog):
                         days_to_start = (start_dt.replace(hour=0, minute=0, second=0, microsecond=0) - today_date).days
                         days_to_end = (end_dt.replace(hour=0, minute=0, second=0, microsecond=0) - today_date).days
                         
-                        if days_to_start > 0: msg += f"**{e_name}** · {row[0]} · D-{days_to_start}\n"
-                        elif days_to_end >= 0: msg += f"**{e_name}** · 진행 중 · {abs(days_to_start) + 1}일차\n"
-                        else: msg += f"**{e_name}** · {row[0]} · 종료\n"
-                    except Exception: msg += f"**{e_name}** · {row[0]}\n"
-                else: msg += f"**{e_name}** · 일정 미등록\n"
+                        if days_to_start > 0:
+                            field_value += f"📅 {row[0]} · `D-{days_to_start}`\n"
+                        elif days_to_end >= 0:
+                            field_value += f"🔥 진행 중 · {abs(days_to_start) + 1}일차\n"
+                        else:
+                            field_value += f"✅ {row[0]} · 종료\n"
+                    except Exception:
+                        field_value += f"📅 {row[0]}\n"
+                else:
+                    field_value += "일정 미등록\n"
             
             async with self.bot.db.execute("SELECT id, content FROM tasks WHERE task_type='시험범위' AND deadline=? AND guild_id=?", (e_name, interaction.guild_id)) as cursor:
                 tasks = await cursor.fetchall()
                 if tasks:
-                    for t_id, content in tasks: msg += f"- `ID:{t_id}` {content}\n"
-                else: msg += "- 등록된 시험 범위가 없습니다.\n"
-            msg += "\n"
+                    for t_id, content in tasks:
+                        field_value += f"　└ `#{t_id}` {content}\n"
+                else:
+                    field_value += "　└ 등록된 시험 범위 없음\n"
             
-        await interaction.response.send_message(msg.strip())
+            scope_embed.add_field(name=f"📝 {e_name}", value=field_value.strip(), inline=False)
+            
+        await interaction.response.send_message(embed=scope_embed)
 
     @app_commands.command(name="학사일정", description="이번 달 또는 특정 달의 학사일정을 확인합니다.")
     @app_commands.describe(month="확인할 월 (1~12, 입력하지 않으면 이번 달)")
@@ -182,26 +196,29 @@ class SchoolCog(commands.Cog):
         schedule_data = await fetch_neis_school_schedule(start_date, end_date)
 
         if schedule_data is None:
-            return await interaction.followup.send(warn("NEIS API 오류로 일정을 불러오지 못했습니다. API 키나 네트워크를 확인해주세요."))
+            return await interaction.followup.send(warn("NEIS API 오류로 일정을 불러오지 못했습니다."))
         
         if not schedule_data:
-            empty_embed = embed(f"🏫 {target_year}년 {target_month}월 학사일정", "등록된 학교 행사가 없습니다.", color=SCHEDULE_COLOR)
+            empty_embed = embed(
+                f"{E_SCHEDULE}  {target_year}년 {target_month}월 학사일정",
+                "등록된 학교 행사가 없습니다.",
+                color=SCHEDULE_COLOR,
+            )
             return await interaction.followup.send(embed=empty_embed)
 
         desc = ""
-        for start_date, end_date, event in schedule_data:
-            # 20260818 -> 8/18 형식으로 깔끔하게 변환
-            s_formatted = f"{int(start_date[4:6])}/{int(start_date[6:8])}"
-            if end_date:
-                e_formatted = f"{int(end_date[4:6])}/{int(end_date[6:8])}"
-                desc += f"**{s_formatted}~{e_formatted}** · {event}\n"
+        for s_date, e_date, event in schedule_data:
+            s_fmt = f"{int(s_date[4:6])}/{int(s_date[6:8])}"
+            if e_date:
+                e_fmt = f"{int(e_date[4:6])}/{int(e_date[6:8])}"
+                desc += f"📅 **{s_fmt}~{e_fmt}** · {event}\n"
             else:
-                desc += f"**{s_formatted}** · {event}\n"
+                desc += f"📅 **{s_fmt}** · {event}\n"
 
         schedule_embed = embed(
-            title=f"🏫 {target_year}년 {target_month}월 학사일정", 
+            title=f"{E_SCHEDULE}  {target_year}년 {target_month}월 학사일정", 
             description=desc.strip(), 
-            color=SCHEDULE_COLOR
+            color=SCHEDULE_COLOR,
         )
         await interaction.followup.send(embed=schedule_embed)
 
@@ -223,8 +240,8 @@ class SchoolCog(commands.Cog):
             (interaction.guild_id, interaction.user.id, 1 if enabled else 0, selected_scope),
         )
         await self.bot.db.commit()
-        status = "켜졌습니다" if enabled else "꺼졌습니다"
-        await interaction.response.send_message(ok(f"개인 알림이 {status}. 범위: `{selected_scope}`"), ephemeral=True)
+        status = "켜졌습니다 🔔" if enabled else "꺼졌습니다 🔕"
+        await interaction.response.send_message(ok(f"개인 알림이 {status}\n범위: `{selected_scope}`"), ephemeral=True)
 
     @app_commands.command(name="주간요약", description="이번 주 남은 숙제, 수행평가, 시험 범위를 요약합니다.")
     async def weekly_summary(self, interaction: discord.Interaction):
@@ -254,22 +271,27 @@ class SchoolCog(commands.Cog):
 
         upcoming.sort(key=lambda item: (item[0], item[2]))
         summary_embed = embed(
-            title="이번 주 학급 일정 요약",
-            description=f"{today_date.strftime('%m/%d')}~{week_end.strftime('%m/%d')} 기준",
+            title=f"{E_REMINDER}  이번 주 학급 일정 요약",
+            description=f"{today_date.strftime('%m/%d')} ~ {week_end.strftime('%m/%d')} 기준",
             color=REMINDER_COLOR,
         )
         if upcoming:
             text = ""
             for days, t_id, task_type, deadline, content in upcoming:
-                d_txt = "오늘" if days == 0 else f"D-{days}"
-                text += f"`ID:{t_id}` [{task_type}] {content} · {deadline} · {d_txt}\n"
-            summary_embed.add_field(name="이번 주 마감", value=truncate_discord_text(text, 1000), inline=False)
+                if days == 0:
+                    d_txt = "🔴 오늘"
+                elif days <= 2:
+                    d_txt = f"🟡 D-{days}"
+                else:
+                    d_txt = f"🟢 D-{days}"
+                text += f"`#{t_id}` [{task_type}] {content}\n　　{deadline} · {d_txt}\n"
+            summary_embed.add_field(name="📌 이번 주 마감", value=truncate_discord_text(text, 1000), inline=False)
         else:
-            summary_embed.add_field(name="이번 주 마감", value="이번 주 안에 마감되는 일정이 없습니다.", inline=False)
+            summary_embed.add_field(name="📌 이번 주 마감", value="이번 주 안에 마감되는 일정이 없습니다. 🎉", inline=False)
 
         if tbd:
-            text = "\n".join([f"`ID:{t_id}` [{task_type}] {content}" for t_id, task_type, _, content in tbd[:8]])
-            summary_embed.add_field(name="마감 미정", value=text, inline=False)
+            text = "\n".join([f"`#{t_id}` [{task_type}] {content}" for t_id, task_type, _, content in tbd[:8]])
+            summary_embed.add_field(name="📋 마감 미정", value=text, inline=False)
         await interaction.response.send_message(embed=summary_embed)
 
     @tasks.loop(time=[datetime.time(hour=6, minute=30, tzinfo=kst), datetime.time(hour=19, minute=30, tzinfo=kst)])
@@ -281,9 +303,9 @@ class SchoolCog(commands.Cog):
         
         target_date = next_school_day(now) if is_evening else now
         if is_evening:
-            prefix = "**내일 일정 미리보기**"
+            prefix = f"**🌙 내일 일정 미리보기**"
         else: 
-            prefix = "**오늘 일정 알림**"
+            prefix = f"**☀️ 오늘 일정 알림**"
 
         async with self.bot.db.execute("SELECT guild_id, value FROM config WHERE key='dashboard_channel'") as cursor:
             rows = await cursor.fetchall()

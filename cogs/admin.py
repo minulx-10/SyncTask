@@ -2,7 +2,11 @@ import discord
 from discord.ext import commands
 from discord import app_commands
 from utils.logger import record_log
-from utils.ui import DASHBOARD_COLOR, SETUP_COLOR, MUTED_COLOR, embed, ok
+from utils.ui import (
+    DASHBOARD_COLOR, SETUP_COLOR, MUTED_COLOR, BRAND_COLOR, DIVIDER,
+    E_SETTING, E_HELP, E_STAR, E_DASHBOARD, E_OK, E_TASK,
+    embed, ok,
+)
 
 SUPER_ADMINS = [771274777443696650]
 
@@ -26,30 +30,62 @@ class AdminCog(commands.Cog):
         await self.bot.db.execute("REPLACE INTO config (guild_id, key, value) VALUES (?, 'grade', ?)", (interaction.guild_id, str(grade)))
         await self.bot.db.execute("REPLACE INTO config (guild_id, key, value) VALUES (?, 'class_nm', ?)", (interaction.guild_id, str(class_nm)))
         await self.bot.db.commit()
-        await interaction.response.send_message(ok(f"시간표 기준을 {grade}학년 {class_nm}반으로 설정했습니다."), ephemeral=True)
+        await interaction.response.send_message(ok(f"시간표 기준을 **{grade}학년 {class_nm}반**으로 설정했습니다."), ephemeral=True)
 
     @app_commands.command(name="시작", description="처음 사용하는 서버를 위한 빠른 설정 안내를 보여줍니다.")
     async def start_guide(self, interaction: discord.Interaction):
         await record_log(interaction, "시작")
         guide = embed(
-            title="SyncTask 빠른 시작",
-            description="필수 설정만 순서대로 정리했습니다.",
+            title=f"{E_STAR}  SyncTask 빠른 시작",
+            description="아래 순서대로 설정하면 바로 사용할 수 있어요.",
             color=SETUP_COLOR,
         )
-        guide.add_field(name="1. 학급", value="`/학급설정`으로 학년과 반을 등록합니다.", inline=False)
-        guide.add_field(name="2. 대시보드", value="공지 채널에서 `/공지설정`을 실행합니다.", inline=False)
-        guide.add_field(name="3. 일정", value="`/추가`, `/시험일정설정`, `/시험범위추가`로 정보를 등록합니다.", inline=False)
-        guide.add_field(name="4. 개인 알림", value="필요한 학생은 `/알림설정`을 사용합니다.", inline=False)
+        guide.add_field(
+            name="Step 1 · 학급 등록",
+            value=f"```/학급설정 grade:학년 class_nm:반```\n시간표 조회의 기준이 됩니다.",
+            inline=False,
+        )
+        guide.add_field(
+            name="Step 2 · 대시보드 설치",
+            value=f"```/공지설정```\n공지 채널에서 실행하면 실시간 일정판이 생성됩니다.",
+            inline=False,
+        )
+        guide.add_field(
+            name="Step 3 · 일정 등록",
+            value="`/추가` · `/시험일정설정` · `/시험범위추가`\n숙제, 수행평가, 시험 범위를 등록합니다.",
+            inline=False,
+        )
+        guide.add_field(
+            name="Step 4 · 개인 알림 (선택)",
+            value="`/알림설정`으로 DM 알림을 받을 수 있습니다.",
+            inline=False,
+        )
         await interaction.response.send_message(embed=guide, ephemeral=True)
 
     @app_commands.command(name="도움말", description="SyncTask 주요 명령어와 사용 흐름을 확인합니다.")
     async def help_command(self, interaction: discord.Interaction):
         await record_log(interaction, "도움말")
-        help_embed = embed("SyncTask 도움말", color=SETUP_COLOR)
-        help_embed.add_field(name="조회", value="`/오늘` `/내일` `/시간표` `/전체일정` `/숙제` `/수행평가` `/시험범위` `/주간요약`", inline=False)
-        help_embed.add_field(name="관리", value="`/추가` `/수정` `/삭제` `/시험일정설정` `/시험범위추가` `/변경이력`", inline=False)
-        help_embed.add_field(name="설정", value="`/시작` `/설정상태` `/학급설정` `/공지설정` `/로그채널설정` `/소개카드`", inline=False)
-        help_embed.add_field(name="개인", value="`/알림설정`으로 DM 알림을 관리합니다.", inline=False)
+        help_embed = embed(f"{E_HELP}  SyncTask 도움말", color=SETUP_COLOR)
+        help_embed.add_field(
+            name="📋 조회",
+            value="`/오늘` `/내일` `/시간표` `/학사일정`\n`/전체일정` `/숙제` `/수행평가` `/시험범위` `/주간요약`",
+            inline=False,
+        )
+        help_embed.add_field(
+            name="📌 관리",
+            value="`/추가` `/수정` `/삭제`\n`/시험일정설정` `/시험범위추가` `/변경이력`",
+            inline=False,
+        )
+        help_embed.add_field(
+            name="⚙️ 설정",
+            value="`/시작` `/설정상태` `/학급설정`\n`/공지설정` `/로그채널설정` `/소개카드`",
+            inline=False,
+        )
+        help_embed.add_field(
+            name="🔔 개인",
+            value="`/알림설정`으로 DM 알림을 관리합니다.",
+            inline=False,
+        )
         await interaction.response.send_message(embed=help_embed, ephemeral=True)
 
     @app_commands.command(name="설정상태", description="이 서버의 SyncTask 설정 상태를 확인합니다.")
@@ -62,15 +98,23 @@ class AdminCog(commands.Cog):
                 row = await cursor.fetchone()
                 values[key] = row[0] if row else None
 
-        status_embed = embed("SyncTask 설정 상태", color=MUTED_COLOR)
-        class_value = f"{values['grade']}학년 {values['class_nm']}반" if values["grade"] and values["class_nm"] else "미설정"
-        dashboard_value = "설정됨" if values["dashboard_channel"] and values["dashboard_message"] else "미설정"
-        log_value = f"<#{values['admin_log_channel']}>" if values["admin_log_channel"] else "미설정"
-        status_embed.add_field(name="학급", value=class_value, inline=False)
-        status_embed.add_field(name="대시보드", value=dashboard_value, inline=False)
-        status_embed.add_field(name="관리자 요청 채널", value=log_value, inline=False)
-        if class_value == "미설정" or dashboard_value == "미설정":
-            status_embed.set_footer(text="/시작에서 설정 순서를 확인할 수 있습니다.")
+        status_embed = embed(f"{E_SETTING}  설정 상태", color=MUTED_COLOR)
+
+        # 각 항목에 체크 표시
+        class_ok = values["grade"] and values["class_nm"]
+        dash_ok = values["dashboard_channel"] and values["dashboard_message"]
+        log_ok = values["admin_log_channel"]
+
+        class_value = f"✅ {values['grade']}학년 {values['class_nm']}반" if class_ok else "❌ 미설정"
+        dashboard_value = "✅ 설정됨" if dash_ok else "❌ 미설정"
+        log_value = f"✅ <#{values['admin_log_channel']}>" if log_ok else "➖ 미설정 (선택)"
+
+        status_embed.add_field(name="학급", value=class_value, inline=True)
+        status_embed.add_field(name="대시보드", value=dashboard_value, inline=True)
+        status_embed.add_field(name="로그 채널", value=log_value, inline=True)
+
+        if not class_ok or not dash_ok:
+            status_embed.set_footer(text="💡 /시작 에서 설정 순서를 확인할 수 있습니다.")
         await interaction.response.send_message(embed=status_embed, ephemeral=True)
 
     @app_commands.command(name="소개카드", description="채널에 SyncTask 소개 메시지를 게시합니다.")
@@ -78,13 +122,13 @@ class AdminCog(commands.Cog):
     async def intro_card(self, interaction: discord.Interaction):
         await record_log(interaction, "소개카드")
         intro = embed(
-            title="SyncTask 학급 알리미",
-            description="시간표, 과제, 수행평가, 시험 범위를 한 곳에서 확인합니다.",
-            color=SETUP_COLOR,
+            title=f"{E_STAR}  SyncTask — 학급 알리미",
+            description="시간표 · 과제 · 수행평가 · 시험 범위를\n**한 곳에서** 확인하세요.",
+            color=BRAND_COLOR,
         )
-        intro.add_field(name="조회", value="`/오늘` `/내일` `/전체일정` `/주간요약`", inline=False)
-        intro.add_field(name="일정 제안", value="`/추가`로 일정을 제안할 수 있습니다.", inline=False)
-        intro.add_field(name="개인 알림", value="`/알림설정`으로 DM 알림을 관리합니다.", inline=False)
+        intro.add_field(name="📋 일정 조회", value="`/오늘`  `/내일`  `/전체일정`  `/주간요약`", inline=False)
+        intro.add_field(name="📌 일정 제안", value="`/추가` 명령어로 누구나 일정을 제안할 수 있어요.", inline=False)
+        intro.add_field(name="🔔 개인 알림", value="`/알림설정`으로 DM 알림을 켜보세요.", inline=False)
         await interaction.response.send_message(ok("소개 카드를 게시했습니다."), ephemeral=True)
         await interaction.channel.send(embed=intro)
 
@@ -94,7 +138,10 @@ class AdminCog(commands.Cog):
         from cogs.tasks import DashboardView
         await record_log(interaction, "공지설정")
         await interaction.response.send_message(ok("대시보드를 설치했습니다."), ephemeral=True)
-        msg = await interaction.channel.send(embed=embed("학급 일정 대시보드", "불러오는 중입니다.", color=DASHBOARD_COLOR), view=DashboardView(self.bot))
+        msg = await interaction.channel.send(
+            embed=embed(f"{E_DASHBOARD}  학급 일정 대시보드", "불러오는 중...", color=DASHBOARD_COLOR),
+            view=DashboardView(self.bot),
+        )
         await self.bot.db.execute("REPLACE INTO config (guild_id, key, value) VALUES (?, 'dashboard_channel', ?)", (interaction.guild_id, str(msg.channel.id)))
         await self.bot.db.execute("REPLACE INTO config (guild_id, key, value) VALUES (?, 'dashboard_message', ?)", (interaction.guild_id, str(msg.id)))
         await self.bot.db.commit()

@@ -5,7 +5,12 @@ from discord.ui import View
 import datetime
 from utils.logger import record_log
 from utils.formatter import parse_deadline, normalize_deadline, truncate_discord_text, kst, get_task_list_embed
-from utils.ui import DASHBOARD_COLOR, HISTORY_COLOR, SUCCESS_COLOR, ERROR_COLOR, MUTED_COLOR, TASK_COLOR, embed, ok, warn, deny
+from utils.ui import (
+    DASHBOARD_COLOR, HISTORY_COLOR, SUCCESS_COLOR, ERROR_COLOR,
+    MUTED_COLOR, TASK_COLOR, DIVIDER,
+    E_DASHBOARD, E_HISTORY, E_TASK, E_OK,
+    embed, ok, warn, deny,
+)
 from cogs.admin import SUPER_ADMINS
 
 class TaskReviewView(View):
@@ -17,7 +22,7 @@ class TaskReviewView(View):
         self.content = content
         self.requester_id = requester_id
 
-    @discord.ui.button(label="승인", style=discord.ButtonStyle.success)
+    @discord.ui.button(label="승인", style=discord.ButtonStyle.success, emoji="✅")
     async def approve(self, interaction: discord.Interaction, button: discord.ui.Button):
         if not (interaction.user.id in SUPER_ADMINS or (hasattr(interaction.user, 'guild_permissions') and interaction.user.guild_permissions.manage_messages)):
             return await interaction.response.send_message(deny("승인할 수 없습니다."), ephemeral=True)
@@ -43,11 +48,11 @@ class TaskReviewView(View):
         if tasks_cog:
             await tasks_cog.update_dashboard(interaction.guild_id)
         
-        embed = interaction.message.embeds[0]
-        embed.title = "일정 요청 승인"
-        embed.color = SUCCESS_COLOR
-        embed.set_footer(text=f"승인자: {interaction.user.name}")
-        await interaction.response.edit_message(embed=embed, view=None)
+        e = interaction.message.embeds[0]
+        e.title = f"{E_OK} 일정 요청 승인"
+        e.color = SUCCESS_COLOR
+        e.set_footer(text=f"승인자: {interaction.user.name}")
+        await interaction.response.edit_message(embed=e, view=None)
         
         try:
             requester = await self.bot.fetch_user(self.requester_id)
@@ -55,22 +60,22 @@ class TaskReviewView(View):
         except Exception:
             pass
 
-    @discord.ui.button(label="거절", style=discord.ButtonStyle.danger)
+    @discord.ui.button(label="거절", style=discord.ButtonStyle.danger, emoji="❌")
     async def reject(self, interaction: discord.Interaction, button: discord.ui.Button):
         if not (interaction.user.id in SUPER_ADMINS or (hasattr(interaction.user, 'guild_permissions') and interaction.user.guild_permissions.manage_messages)):
             return await interaction.response.send_message(deny("거절할 수 없습니다."), ephemeral=True)
 
-        embed = interaction.message.embeds[0]
-        embed.title = "일정 요청 거절"
-        embed.color = ERROR_COLOR
-        embed.set_footer(text=f"거절자: {interaction.user.name}")
-        await interaction.response.edit_message(embed=embed, view=None)
+        e = interaction.message.embeds[0]
+        e.title = "❌ 일정 요청 거절"
+        e.color = ERROR_COLOR
+        e.set_footer(text=f"거절자: {interaction.user.name}")
+        await interaction.response.edit_message(embed=e, view=None)
 
 class DashboardView(View):
     def __init__(self, bot):
         super().__init__(timeout=None)
         self.bot = bot
-    @discord.ui.button(label="새로고침", style=discord.ButtonStyle.secondary, custom_id="refresh_dashboard")
+    @discord.ui.button(label="새로고침", style=discord.ButtonStyle.secondary, custom_id="refresh_dashboard", emoji="🔄")
     async def refresh_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         await record_log(interaction, "대시보드_새로고침")
         await interaction.response.defer(ephemeral=True)
@@ -115,7 +120,7 @@ class TasksCog(commands.Cog):
         for (g_id,) in guilds:
             async with self.bot.db.execute('SELECT id, task_type, deadline, content FROM tasks WHERE guild_id = ?', (g_id,)) as cursor:
                 tasks_list = await cursor.fetchall()
-            dated_tasks, tbd_tasks, embed_desc = [], [], ""
+            dated_tasks, tbd_tasks = [], []
             
             for row in tasks_list:
                 if row[2] == "미정": tbd_tasks.append(row)
@@ -128,13 +133,26 @@ class TasksCog(commands.Cog):
                     
             dated_tasks.sort(key=lambda x: x[0])
             
-            for days, (t_id, t_type, d_str, content) in dated_tasks:
-                d_txt = "오늘" if days == 0 else f"D-{days}"
-                embed_desc += f"`ID:{t_id}` [{t_type}] {content} · {d_str} · {d_txt}\n"
-            for t_id, t_type, d_str, content in tbd_tasks:
-                embed_desc += f"`ID:{t_id}` [{t_type}] {content} · 마감 미정\n"
+            # 대시보드 임베드 구성
+            embed_desc = ""
+            if dated_tasks or tbd_tasks:
+                for days, (t_id, t_type, d_str, content) in dated_tasks:
+                    if days == 0:
+                        d_txt = "🔴 오늘"
+                    elif days <= 3:
+                        d_txt = f"🟡 D-{days}"
+                    else:
+                        d_txt = f"🟢 D-{days}"
+                    embed_desc += f"`#{t_id}` [{t_type}] {content}\n　　{d_str} · {d_txt}\n"
                 
-            if not embed_desc: embed_desc = "등록된 일정이 없습니다."
+                if tbd_tasks:
+                    if dated_tasks:
+                        embed_desc += f"\n{DIVIDER}\n\n"
+                    for t_id, t_type, d_str, content in tbd_tasks:
+                        embed_desc += f"`#{t_id}` [{t_type}] {content}\n　　마감 미정\n"
+            else:
+                embed_desc = "등록된 일정이 없습니다. 🎉\n`/추가`로 일정을 등록해보세요."
+                
             embed_desc = truncate_discord_text(embed_desc)
 
             async with self.bot.db.execute("SELECT value FROM config WHERE key='dashboard_channel' AND guild_id=?", (g_id,)) as cursor:
@@ -147,9 +165,13 @@ class TasksCog(commands.Cog):
                 if channel:
                     try:
                         msg = await channel.fetch_message(int(msg_row[0]))
-                        embed = discord.Embed(title="학급 일정 대시보드", description=embed_desc, color=DASHBOARD_COLOR)
-                        embed.set_footer(text=f"마지막 새로고침: {now.strftime('%Y-%m-%d %H:%M:%S')}")
-                        await msg.edit(embed=embed, view=DashboardView(self.bot))
+                        dash_embed = discord.Embed(
+                            title=f"{E_DASHBOARD}  학급 일정 대시보드",
+                            description=embed_desc,
+                            color=DASHBOARD_COLOR,
+                        )
+                        dash_embed.set_footer(text=f"마지막 업데이트: {now.strftime('%m/%d %H:%M')} · {DIVIDER}")
+                        await msg.edit(embed=dash_embed, view=DashboardView(self.bot))
                     except discord.NotFound: pass
 
         await self.bot.change_presence(activity=discord.Game("학급 일정 관리 중!"))
@@ -178,7 +200,7 @@ class TasksCog(commands.Cog):
             await self.update_dashboard(interaction.guild_id)
             await interaction.response.send_message(ok(f"`{content}` 일정을 등록했습니다."), ephemeral=True)
         else:
-            request_embed = embed("일정 등록 요청", color=TASK_COLOR)
+            request_embed = embed(f"{E_TASK}  일정 등록 요청", color=TASK_COLOR)
             request_embed.add_field(name="종류", value=task_type.value, inline=True)
             request_embed.add_field(name="마감", value=deadline, inline=True)
             request_embed.add_field(name="내용", value=content, inline=False)
@@ -215,7 +237,7 @@ class TasksCog(commands.Cog):
         await self.bot.db.execute(f'DELETE FROM tasks WHERE id IN ({placeholders}) AND guild_id = ?', id_list + [interaction.guild_id])
         await self.bot.db.commit()
         await self.record_change(interaction, "삭제", f"ID: {', '.join(map(str, id_list))}")
-        await interaction.response.send_message(ok(f"ID {', '.join(map(str, id_list))} 일정을 삭제했습니다."), ephemeral=True)
+        await interaction.response.send_message(ok(f"ID `{', '.join(map(str, id_list))}` 일정을 삭제했습니다."), ephemeral=True)
         await self.update_dashboard(interaction.guild_id)
 
     @app_commands.command(name="수정", description="등록된 일정의 정보를 수정합니다.")
@@ -250,29 +272,49 @@ class TasksCog(commands.Cog):
         await self.bot.db.commit()
         await self.record_change(interaction, "수정", f"ID:{task_id} -> [{new_type}] {new_content} / {new_deadline}")
         await self.update_dashboard(interaction.guild_id)
-        await interaction.response.send_message(ok(f"`ID:{task_id}` 일정을 수정했습니다."), ephemeral=True)
+        await interaction.response.send_message(ok(f"`#{task_id}` 일정을 수정했습니다."), ephemeral=True)
 
     @app_commands.command(name="전체일정", description="모든 일정을 한 번에 보여줍니다.")
     async def all_tasks(self, interaction: discord.Interaction):
         await record_log(interaction, "전체일정")
+        now = datetime.datetime.now(kst)
+        today_date = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        
         async with self.bot.db.execute('SELECT id, task_type, deadline, content FROM tasks WHERE guild_id = ?', (interaction.guild_id,)) as cursor:
             tasks_list = await cursor.fetchall()
-        if not tasks_list: return await interaction.response.send_message("등록된 일정이 없습니다.")
-        msg = "**전체 일정**\n"
-        for r in tasks_list: msg += f"`ID:{r[0]}` [{r[1]}] {r[3]} · {r[2]}\n"
-        await interaction.response.send_message(truncate_discord_text(msg))
+        if not tasks_list:
+            return await interaction.response.send_message(
+                embed=embed(f"{E_TASK}  전체 일정", "등록된 일정이 없습니다.", color=TASK_COLOR)
+            )
+        
+        msg = ""
+        for r in tasks_list:
+            d_tag = ""
+            if r[2] != "미정":
+                try:
+                    target = parse_deadline(r[2], now)
+                    days = (target - today_date).days
+                    if days == 0: d_tag = " · 🔴 오늘"
+                    elif days > 0: d_tag = f" · D-{days}"
+                    else: d_tag = f" · D+{-days}"
+                except ValueError: pass
+            msg += f"`#{r[0]}` [{r[1]}] {r[3]} · {r[2]}{d_tag}\n"
+        
+        all_embed = embed(f"{E_TASK}  전체 일정", truncate_discord_text(msg.strip()), color=TASK_COLOR)
+        all_embed.set_footer(text=f"총 {len(tasks_list)}개")
+        await interaction.response.send_message(embed=all_embed)
 
     @app_commands.command(name="숙제", description="앞으로 남은 숙제 목록을 D-Day 순으로 보여줍니다.")
     async def homework_list(self, interaction: discord.Interaction):
         await record_log(interaction, "숙제")
-        embed = await get_task_list_embed("숙제", interaction.guild_id, self.bot.db)
-        await interaction.response.send_message(embed=embed)
+        e = await get_task_list_embed("숙제", interaction.guild_id, self.bot.db)
+        await interaction.response.send_message(embed=e)
 
     @app_commands.command(name="수행평가", description="앞으로 남은 수행평가 목록을 D-Day 순으로 보여줍니다.")
     async def performance_list(self, interaction: discord.Interaction):
         await record_log(interaction, "수행평가")
-        embed = await get_task_list_embed("수행평가", interaction.guild_id, self.bot.db)
-        await interaction.response.send_message(embed=embed)
+        e = await get_task_list_embed("수행평가", interaction.guild_id, self.bot.db)
+        await interaction.response.send_message(embed=e)
 
     @app_commands.command(name="변경이력", description="최근 일정 추가/수정/삭제 기록을 확인합니다.")
     async def change_history(self, interaction: discord.Interaction):
@@ -290,15 +332,19 @@ class TasksCog(commands.Cog):
             rows = await cursor.fetchall()
 
         if not rows:
-            return await interaction.response.send_message("아직 기록된 변경 이력이 없습니다.", ephemeral=True)
-
-        history_embed = embed("최근 변경 이력", color=HISTORY_COLOR)
-        for user_id, action, details, created_at in rows:
-            history_embed.add_field(
-                name=f"{created_at} / {action}",
-                value=f"<@{user_id}> - {details}",
-                inline=False,
+            return await interaction.response.send_message(
+                embed=embed(f"{E_HISTORY}  변경 이력", "아직 기록된 변경 이력이 없습니다.", color=HISTORY_COLOR),
+                ephemeral=True,
             )
+
+        desc = ""
+        for user_id, action, details, created_at in rows:
+            # 액션에 따라 아이콘 결정
+            icon = "➕" if "추가" in action or "승인" in action else "✏️" if "수정" in action else "🗑️" if "삭제" in action else "📋"
+            time_short = created_at[5:16] if len(created_at) >= 16 else created_at  # MM-DD HH:MM
+            desc += f"{icon} **{action}** · <@{user_id}>\n　　{details}\n　　`{time_short}`\n\n"
+
+        history_embed = embed(f"{E_HISTORY}  최근 변경 이력", desc.strip(), color=HISTORY_COLOR)
         await interaction.response.send_message(embed=history_embed)
 
 
