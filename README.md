@@ -32,7 +32,7 @@ NEIS 학사일정 자동 연동부터 수행평가, 숙제, 시험 범위 관리
 DISCORD_TOKEN=your_discord_bot_token
 NEIS_API_KEY=your_neis_api_key
 ADMIN_PASSWORD=strong_admin_password
-DASHBOARD_PUBLIC_URL=http://ssh.gsmsv.site:26111
+DASHBOARD_PUBLIC_URL=https://your-dashboard.example.com
 DASHBOARD_HOST=0.0.0.0
 DASHBOARD_PORT=10000
 GUILD_SYNC_ON_READY=1
