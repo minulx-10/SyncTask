@@ -129,7 +129,7 @@ class SyncTaskBot(commands.Bot):
                 # 대시보드 — 접근 가능 여부에 따라 표시 분기
                 if is_accessible:
                     admin_password = os.getenv("ADMIN_PASSWORD")
-                    dash_value = f"[{dashboard_url}]({dashboard_url})"
+                    dash_value = f"[대시보드 열기]({dashboard_url})"
                     if admin_password:
                         dash_value += f"\n비밀번호: ||{admin_password}||"
                     boot_embed.add_field(name="🌐 대시보드", value=dash_value, inline=False)

@@ -32,34 +32,71 @@ async def auth_middleware(app, handler):
     return middleware
 
 async def login_page(request):
-    html = """
+    page = """
     <!DOCTYPE html>
     <html lang="ko">
     <head>
         <meta charset="UTF-8">
-        <title>SyncTask - Login</title>
-        <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>SyncTask · Login</title>
+        <link rel="preconnect" href="https://fonts.googleapis.com">
+        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
         <style>
-            body { background: #0f1216; color: white; font-family: 'Pretendard'; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
-            .login-box { background: rgba(255,255,255,0.05); padding: 40px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.1); backdrop-filter: blur(10px); width: 350px; text-align: center; }
-            h2 { color: #5865F2; margin-bottom: 20px; }
-            input { width: 100%; padding: 12px; margin: 10px 0; border-radius: 8px; border: 1px solid #333; background: #1e1e1e; color: white; }
-            button { width: 100%; padding: 12px; border-radius: 8px; border: none; background: #5865F2; color: white; font-weight: bold; cursor: pointer; margin-top: 10px; }
+            * { margin: 0; padding: 0; box-sizing: border-box; }
+            body {
+                background: #0c0d10;
+                color: #e4e6ea;
+                font-family: 'Inter', -apple-system, sans-serif;
+                display: flex; justify-content: center; align-items: center;
+                min-height: 100vh;
+            }
+            .login-card {
+                width: 380px;
+                background: #16181d;
+                border: 1px solid #2a2d35;
+                border-radius: 16px;
+                padding: 48px 36px;
+                text-align: center;
+            }
+            .logo { font-size: 2rem; margin-bottom: 8px; }
+            .title { font-size: 1.1rem; font-weight: 700; color: #fff; margin-bottom: 4px; }
+            .subtitle { font-size: 0.8rem; color: #6b7280; margin-bottom: 32px; }
+            input {
+                width: 100%; padding: 14px 16px;
+                background: #0c0d10; border: 1px solid #2a2d35;
+                border-radius: 10px; color: #fff;
+                font-size: 0.9rem; outline: none;
+                transition: border-color 0.2s;
+            }
+            input:focus { border-color: #5865F2; }
+            input::placeholder { color: #4b5563; }
+            button {
+                width: 100%; padding: 14px;
+                background: #5865F2; color: #fff;
+                border: none; border-radius: 10px;
+                font-size: 0.9rem; font-weight: 600;
+                cursor: pointer; margin-top: 16px;
+                transition: background 0.2s, transform 0.1s;
+            }
             button:hover { background: #4752c4; }
+            button:active { transform: scale(0.98); }
+            .error { color: #ed4245; font-size: 0.8rem; margin-top: 12px; }
         </style>
     </head>
     <body>
-        <div class="login-box">
-            <h2>🔐 Admin Login</h2>
+        <div class="login-card">
+            <div class="logo">🔒</div>
+            <div class="title">SyncTask Admin</div>
+            <div class="subtitle">관리자 인증이 필요합니다</div>
             <form action="/do_login" method="post">
-                <input type="password" name="password" placeholder="Password" required>
-                <button type="submit">Login</button>
+                <input type="password" name="password" placeholder="비밀번호 입력" required autofocus>
+                <button type="submit">로그인</button>
             </form>
         </div>
     </body>
     </html>
     """
-    return web.Response(text=html, content_type='text/html')
+    return web.Response(text=page, content_type='text/html')
 
 async def do_login(request):
     if not ADMIN_PASSWORD:
@@ -90,10 +127,10 @@ async def api_get_logs_json(request):
                 gid = match.group(1)
                 if gid not in guild_icons:
                     if gid == "DM":
-                        guild_icons[gid] = "https://cdn-icons-png.flaticon.com/512/1077/1077063.png"
+                        guild_icons[gid] = ""
                     else:
                         guild = bot.get_guild(int(gid))
-                        guild_icons[gid] = str(guild.icon.url) if guild and guild.icon else "https://cdn-icons-png.flaticon.com/512/2111/2111370.png"
+                        guild_icons[gid] = str(guild.icon.url) if guild and guild.icon else ""
 
                 parsed.append({
                     "guild_id": gid,
@@ -109,168 +146,197 @@ async def api_get_logs_json(request):
         return web.json_response({"error": str(e)}, status=500)
 
 async def admin_log_dashboard(request):
-    html = """
+    page = """
     <!DOCTYPE html>
     <html lang="ko">
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>SyncTask Admin Dashboard</title>
-        <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css">
+        <title>SyncTask · Dashboard</title>
+        <link rel="preconnect" href="https://fonts.googleapis.com">
+        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
         <style>
-            :root { --bg: #0f1115; --card: #181b20; --line: #2a2e35; --accent: #5865F2; --text: #f5f6f8; --text-m: #9aa0a6; }
-            * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Pretendard', sans-serif; }
-            body { background: var(--bg); color: var(--text); overflow-x: hidden; }
-            
-            .container { max-width: 1200px; margin: 0 auto; padding: 40px 20px; }
-            header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 40px; }
-            .brand { display: flex; align-items: center; gap: 12px; }
-            .brand h1 { font-size: 1.35rem; font-weight: 700; color: var(--text); }
-            .status-dot { width: 9px; height: 9px; background: #3ba55c; border-radius: 50%; }
-
-            /* Server Grid */
-            .server-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 25px; }
-            .server-card { 
-                background: var(--card); border-radius: 8px; overflow: hidden; cursor: pointer; 
-                transition: border-color 0.2s ease, background 0.2s ease; border: 1px solid var(--line);
-                display: flex; flex-direction: column;
+            :root {
+                --bg: #0c0d10; --surface: #16181d; --border: #2a2d35;
+                --accent: #5865F2; --accent-h: #4752c4;
+                --text: #e4e6ea; --text-s: #9ca3af; --text-d: #6b7280;
+                --green: #57F287; --red: #ed4245; --amber: #f59e0b;
             }
-            .server-card:hover { border-color: var(--accent); background: #1d2128; }
-            .server-icon { width: 100%; aspect-ratio: 1/1; object-fit: cover; background: #2f3136; }
-            .server-info { padding: 12px; text-align: center; background: rgba(0,0,0,0.2); }
-            .server-name { font-weight: 600; font-size: 0.85rem; color: var(--text-m); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-            
-            /* Log View */
-            #log-view { display: none; animation: fadeIn 0.4s ease; }
-            @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-            
-            .view-header { margin-bottom: 30px; }
-            .top-actions { display: flex; align-items: center; gap: 15px; margin-bottom: 20px; }
-            .back-btn { background: var(--card); border: 1px solid var(--line); color: white; padding: 10px 18px; border-radius: 8px; cursor: pointer; font-weight: 600; display: flex; align-items: center; gap: 8px; }
-            .back-btn:hover { background: #25292e; border-color: var(--accent); }
+            * { margin: 0; padding: 0; box-sizing: border-box; }
+            body { background: var(--bg); color: var(--text); font-family: 'Inter', -apple-system, sans-serif; min-height: 100vh; }
 
-            .filter-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
-            .filter-item { position: relative; }
-            .filter-item input { 
-                width: 100%; background: var(--card); border: 1px solid #333; padding: 12px 15px 12px 40px; 
-                border-radius: 8px; color: white; font-size: 0.9rem; outline: none; transition: 0.2s;
-            }
-            .filter-item input:focus { border-color: var(--accent); }
-            .filter-icon { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); font-size: 0.9rem; color: var(--text-m); }
+            /* ── Layout ── */
+            .app { max-width: 960px; margin: 0 auto; padding: 32px 24px 60px; }
 
-            .log-list { display: flex; flex-direction: column; gap: 10px; }
-            .log-item { 
-                background: var(--card); padding: 15px 20px; border-radius: 8px; display: flex; justify-content: space-between; 
-                align-items: center; border: 1px solid transparent; transition: 0.2s; cursor: pointer;
-            }
-            .log-item:hover { border-color: rgba(255,255,255,0.1); background: #1c2126; }
-            .log-main { display: flex; align-items: center; gap: 15px; }
-            .log-user { font-weight: 700; color: var(--accent); min-width: 100px; }
-            .log-cmd { font-weight: 600; color: #fff; background: rgba(255,255,255,0.05); padding: 4px 10px; border-radius: 6px; }
-            .log-details { color: var(--text-m); font-size: 0.9rem; max-width: 400px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-            .log-time { color: var(--text-m); font-size: 0.8rem; font-family: monospace; }
+            /* ── Header ── */
+            .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 32px; }
+            .brand { display: flex; align-items: center; gap: 10px; }
+            .brand-dot { width: 8px; height: 8px; background: var(--green); border-radius: 50%; box-shadow: 0 0 8px var(--green); }
+            .brand-name { font-size: 1.15rem; font-weight: 700; letter-spacing: -0.02em; }
+            .header-badge { font-size: 0.75rem; color: var(--text-d); font-weight: 600; background: var(--surface); border: 1px solid var(--border); padding: 6px 14px; border-radius: 20px; }
 
-            /* Modal */
-            .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); backdrop-filter: blur(8px); z-index: 1000; }
-            .modal-content { 
-                position: relative; background: #1e1e1e; width: 90%; max-width: 500px; margin: 100px auto; 
-                padding: 40px; border-radius: 8px; border: 1px solid #333; box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+            /* ── Server Grid ── */
+            .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; }
+            .srv {
+                background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+                padding: 20px; cursor: pointer;
+                transition: border-color 0.2s, background 0.2s, transform 0.15s;
+                display: flex; align-items: center; gap: 14px;
             }
-            .modal-close { position: absolute; right: 25px; top: 25px; cursor: pointer; font-size: 1.5rem; color: var(--text-m); }
-            .modal-header { font-size: 1.4rem; font-weight: 800; margin-bottom: 25px; color: var(--accent); border-bottom: 1px solid #333; padding-bottom: 15px; }
-            .modal-body p { margin-bottom: 15px; font-size: 1rem; line-height: 1.6; color: #ddd; }
-            .modal-body b { color: #fff; display: inline-block; width: 100px; }
+            .srv:hover { border-color: var(--accent); background: #1a1d24; transform: translateY(-2px); }
+            .srv-icon {
+                width: 44px; height: 44px; border-radius: 12px; object-fit: cover;
+                background: var(--border); flex-shrink: 0;
+            }
+            .srv-icon-placeholder {
+                width: 44px; height: 44px; border-radius: 12px;
+                background: linear-gradient(135deg, var(--accent), #7c3aed);
+                display: flex; align-items: center; justify-content: center;
+                font-size: 1.1rem; font-weight: 700; color: #fff; flex-shrink: 0;
+            }
+            .srv-name { font-weight: 600; font-size: 0.9rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+            .srv-count { font-size: 0.75rem; color: var(--text-d); margin-top: 2px; }
+
+            /* ── Log View ── */
+            #log-view { display: none; animation: slideUp 0.3s ease; }
+            @keyframes slideUp { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+
+            .log-header { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; }
+            .back {
+                background: var(--surface); border: 1px solid var(--border); color: var(--text);
+                padding: 8px 16px; border-radius: 8px; cursor: pointer;
+                font-size: 0.85rem; font-weight: 600; transition: 0.2s;
+            }
+            .back:hover { border-color: var(--accent); }
+            .log-server-name { font-size: 1rem; font-weight: 700; }
+
+            .filters { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
+            .filters input {
+                flex: 1; min-width: 140px; padding: 10px 14px;
+                background: var(--surface); border: 1px solid var(--border);
+                border-radius: 8px; color: var(--text); font-size: 0.85rem; outline: none;
+                transition: border-color 0.2s;
+            }
+            .filters input:focus { border-color: var(--accent); }
+            .filters input::placeholder { color: var(--text-d); }
+
+            /* ── Log Items ── */
+            .logs { display: flex; flex-direction: column; gap: 6px; }
+            .log {
+                background: var(--surface); border: 1px solid transparent; border-radius: 10px;
+                padding: 14px 18px; display: flex; align-items: center; gap: 14px;
+                cursor: pointer; transition: 0.15s;
+            }
+            .log:hover { border-color: var(--border); background: #1a1d24; }
+            .log-time { font-size: 0.75rem; color: var(--text-d); font-family: 'SF Mono', 'Fira Code', monospace; min-width: 55px; flex-shrink: 0; }
+            .log-user { font-weight: 600; color: var(--accent); min-width: 80px; font-size: 0.85rem; flex-shrink: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+            .log-cmd {
+                font-size: 0.8rem; font-weight: 600; color: #fff;
+                background: rgba(88, 101, 242, 0.15); padding: 3px 10px; border-radius: 6px;
+                flex-shrink: 0;
+            }
+            .log-detail { font-size: 0.8rem; color: var(--text-s); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+            .log-empty { text-align: center; color: var(--text-d); padding: 60px 0; font-size: 0.9rem; }
+
+            /* ── Modal ── */
+            .modal-bg { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.7); backdrop-filter: blur(6px); z-index: 100; }
+            .modal {
+                position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+                background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
+                padding: 32px; width: 90%; max-width: 440px;
+            }
+            .modal-title { font-size: 1rem; font-weight: 700; color: var(--accent); margin-bottom: 20px; padding-bottom: 14px; border-bottom: 1px solid var(--border); }
+            .modal-row { display: flex; margin-bottom: 12px; font-size: 0.9rem; line-height: 1.5; }
+            .modal-label { color: var(--text-d); width: 80px; flex-shrink: 0; font-weight: 600; }
+            .modal-value { color: var(--text); word-break: break-all; }
+            .modal-close {
+                position: absolute; top: 16px; right: 20px; cursor: pointer;
+                font-size: 1.3rem; color: var(--text-d); transition: 0.2s;
+            }
+            .modal-close:hover { color: var(--text); }
+
+            /* ── Responsive ── */
+            @media (max-width: 600px) {
+                .app { padding: 20px 16px; }
+                .grid { grid-template-columns: 1fr; }
+                .log { flex-wrap: wrap; gap: 8px; }
+                .log-detail { flex-basis: 100%; }
+                .filters { flex-direction: column; }
+                .filters input { min-width: unset; }
+            }
         </style>
     </head>
     <body>
-        <div class="container">
-            <header>
+        <div class="app">
+            <div class="header">
                 <div class="brand">
-                    <div class="status-dot"></div>
-                    <h1>SyncTask Dashboard</h1>
+                    <div class="brand-dot"></div>
+                    <div class="brand-name">SyncTask</div>
                 </div>
-                <div style="font-size: 0.9rem; color: var(--text-m); font-weight: 600;">운영 로그</div>
-            </header>
+                <div class="header-badge">운영 로그</div>
+            </div>
 
             <div id="grid-view">
-                <div class="server-grid" id="server-list"></div>
+                <div class="grid" id="server-list"></div>
             </div>
 
             <div id="log-view">
-                <div class="view-header">
-                    <div class="top-actions">
-                        <button class="back-btn" onclick="showGrid()"><span>←</span> 서버 목록</button>
-                    </div>
-                    <div class="filter-grid">
-                        <div class="filter-item">
-                            <span class="filter-icon">U</span>
-                            <input type="text" id="filter-user" placeholder="유저명 검색..." oninput="renderLogs()">
-                        </div>
-                        <div class="filter-item">
-                            <span class="filter-icon">/</span>
-                            <input type="text" id="filter-cmd" placeholder="명령어 검색..." oninput="renderLogs()">
-                        </div>
-                        <div class="filter-item">
-                            <span class="filter-icon">T</span>
-                            <input type="text" id="filter-content" placeholder="내용 검색..." oninput="renderLogs()">
-                        </div>
-                    </div>
+                <div class="log-header">
+                    <button class="back" onclick="showGrid()">← 목록</button>
+                    <div class="log-server-name" id="log-title"></div>
                 </div>
-                <div class="log-list" id="log-container"></div>
+                <div class="filters">
+                    <input type="text" id="f-user" placeholder="👤 유저 검색" oninput="renderLogs()">
+                    <input type="text" id="f-cmd" placeholder="/ 명령어 검색" oninput="renderLogs()">
+                    <input type="text" id="f-detail" placeholder="📋 내용 검색" oninput="renderLogs()">
+                </div>
+                <div class="logs" id="log-list"></div>
             </div>
         </div>
 
-        <div id="logModal" class="modal" onclick="if(event.target == this) closeModal()">
-            <div class="modal-content">
+        <div class="modal-bg" id="modal-bg" onclick="if(event.target===this)closeModal()">
+            <div class="modal">
                 <span class="modal-close" onclick="closeModal()">&times;</span>
-                <div class="modal-header">Log Details</div>
-                <div id="modal-body" class="modal-body"></div>
+                <div class="modal-title">로그 상세</div>
+                <div id="modal-body"></div>
             </div>
         </div>
 
         <script>
-            let allLogs = [];
-            let currentServer = null;
+            let allLogs = [], currentServer = null, filteredCache = [];
 
             async function fetchData() {
                 try {
-                    const res = await fetch('/api/logs_json');
-                    allLogs = await res.json();
-                    if (!currentServer) renderGrid();
-                    else renderLogs();
-                } catch (e) { console.error("Data fetch failed", e); }
+                    const r = await fetch('/api/logs_json');
+                    allLogs = await r.json();
+                    if (!currentServer) renderGrid(); else renderLogs();
+                } catch(e) { console.error(e); }
             }
-            function escapeHTML(value) {
-                return String(value ?? '').replace(/[&<>"']/g, ch => ({
-                    '&': '&amp;',
-                    '<': '&lt;',
-                    '>': '&gt;',
-                    '"': '&quot;',
-                    "'": '&#39;'
-                }[ch]));
-            }
+
+            const esc = v => String(v??'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
             function renderGrid() {
-                const serverList = document.getElementById('server-list');
-                const servers = {};
-                allLogs.forEach(log => {
-                    if (!servers[log.guild_id]) {
-                        servers[log.guild_id] = { id: log.guild_id, name: log.guild_name, icon: log.guild_icon };
-                    }
+                const el = document.getElementById('server-list');
+                const srvs = {};
+                allLogs.forEach(l => {
+                    if (!srvs[l.guild_id]) srvs[l.guild_id] = { id: l.guild_id, name: l.guild_name, icon: l.guild_icon, count: 0 };
+                    srvs[l.guild_id].count++;
                 });
-                serverList.innerHTML = Object.values(servers).map(s => `
-                    <div class="server-card" onclick="selectServer('${escapeHTML(s.id)}')">
-                        <img src="${escapeHTML(s.icon)}" class="server-icon" onerror="this.src='https://cdn-icons-png.flaticon.com/512/2111/2111370.png'">
-                        <div class="server-info"><div class="server-name">${escapeHTML(s.name)}</div></div>
-                    </div>
-                `).join('');
+                if (!Object.keys(srvs).length) { el.innerHTML = '<div class="log-empty">아직 기록된 로그가 없습니다.</div>'; return; }
+                el.innerHTML = Object.values(srvs).map(s => {
+                    const iconEl = s.icon
+                        ? `<img class="srv-icon" src="${esc(s.icon)}" onerror="this.outerHTML='<div class=srv-icon-placeholder>'+ '${esc(s.name)[0]}' +'</div>'">`
+                        : `<div class="srv-icon-placeholder">${esc(s.name)[0] || '?'}</div>`;
+                    return `<div class="srv" onclick="selectServer('${esc(s.id)}','${esc(s.name)}')">${iconEl}<div><div class="srv-name">${esc(s.name)}</div><div class="srv-count">${s.count}개의 로그</div></div></div>`;
+                }).join('');
             }
 
-            function selectServer(gid) {
-                currentServer = gid;
+            function selectServer(id, name) {
+                currentServer = id;
                 document.getElementById('grid-view').style.display = 'none';
                 document.getElementById('log-view').style.display = 'block';
-                document.querySelectorAll('.filter-item input').forEach(i => i.value = '');
+                document.getElementById('log-title').textContent = name;
+                document.querySelectorAll('.filters input').forEach(i => i.value = '');
                 renderLogs();
             }
 
@@ -282,52 +348,45 @@ async def admin_log_dashboard(request):
             }
 
             function renderLogs() {
-                const uF = document.getElementById('filter-user').value.toLowerCase();
-                const cF = document.getElementById('filter-cmd').value.toLowerCase();
-                const tF = document.getElementById('filter-content').value.toLowerCase();
-                const container = document.getElementById('log-container');
-                
-                const filtered = allLogs.filter(l => {
-                    return l.guild_id === currentServer && 
-                           l.user.toLowerCase().includes(uF) && 
-                           l.command.toLowerCase().includes(cF) && 
-                           l.details.toLowerCase().includes(tF);
-                });
+                const uF = document.getElementById('f-user').value.toLowerCase();
+                const cF = document.getElementById('f-cmd').value.toLowerCase();
+                const dF = document.getElementById('f-detail').value.toLowerCase();
+                const el = document.getElementById('log-list');
 
-                container.innerHTML = filtered.map((l, index) => `
-                    <div class="log-item" onclick='showDetailByIndex(${index})'>
-                        <div class="log-main">
-                            <span class="log-user">${escapeHTML(l.user)}</span>
-                            <span class="log-cmd">/${escapeHTML(l.command)}</span>
-                            <span class="log-details">${escapeHTML(l.details)}</span>
-                        </div>
-                        <div class="log-time">${escapeHTML(l.time.split(' ')[1])}</div>
-                    </div>
-                `).join('');
-                window.filteredLogs = filtered;
+                filteredCache = allLogs.filter(l =>
+                    l.guild_id === currentServer &&
+                    l.user.toLowerCase().includes(uF) &&
+                    l.command.toLowerCase().includes(cF) &&
+                    l.details.toLowerCase().includes(dF)
+                );
+
+                if (!filteredCache.length) { el.innerHTML = '<div class="log-empty">조건에 맞는 로그가 없습니다.</div>'; return; }
+
+                el.innerHTML = filteredCache.map((l, i) => {
+                    const t = l.time.split(' ');
+                    const timeStr = t.length > 1 ? t[1].substring(0, 5) : t[0];
+                    return `<div class="log" onclick="showDetail(${i})"><span class="log-time">${esc(timeStr)}</span><span class="log-user">${esc(l.user)}</span><span class="log-cmd">/${esc(l.command)}</span><span class="log-detail">${esc(l.details)}</span></div>`;
+                }).join('');
             }
 
-            function showDetailByIndex(index) {
-                showDetail(window.filteredLogs[index]);
+            function showDetail(i) {
+                const l = filteredCache[i]; if (!l) return;
+                document.getElementById('modal-body').innerHTML = [
+                    ['시간', l.time], ['서버', `${l.guild_name}`], ['유저', l.user],
+                    ['명령어', `/${l.command}`], ['상세', l.details || '—']
+                ].map(([k,v]) => `<div class="modal-row"><div class="modal-label">${k}</div><div class="modal-value">${esc(v)}</div></div>`).join('');
+                document.getElementById('modal-bg').style.display = 'block';
             }
-            function showDetail(log) {
-                document.getElementById('modal-body').innerHTML = `
-                    <p><b>Time:</b> ${escapeHTML(log.time)}</p>
-                    <p><b>Server:</b> ${escapeHTML(log.guild_name)} (${escapeHTML(log.guild_id)})</p>
-                    <p><b>User:</b> ${escapeHTML(log.user)}</p>
-                    <p><b>Command:</b> /${escapeHTML(log.command)}</p>
-                    <p><b>Details:</b> ${escapeHTML(log.details || 'None')}</p>
-                `;
-                document.getElementById('logModal').style.display = "block";
-            }
-            function closeModal() { document.getElementById('logModal').style.display = "none"; }
+
+            function closeModal() { document.getElementById('modal-bg').style.display = 'none'; }
+            document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
             fetchData();
             setInterval(fetchData, 5000);
         </script>
     </body>
     </html>
     """
-    return web.Response(text=html, content_type='text/html')
+    return web.Response(text=page, content_type='text/html')
 
 async def run_web_server(bot):
     app = web.Application(middlewares=[auth_middleware])
