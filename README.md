@@ -18,6 +18,10 @@ NEIS 학사일정 자동 연동부터 수행평가, 숙제, 시험 범위 관리
 - **관리자 웹 대시보드 (Web UI)**:
   - `aiohttp` 기반으로 구동되는 관리자 전용 웹 모니터링 페이지를 제공합니다.
   - 실시간으로 봇 명령어 사용 로그(누가, 어떤 서버에서, 무슨 명령어를 썼는지)를 모니터링할 수 있습니다.
+- **교사용 공지 작성/예약 (Web UI)**:
+  - `/announcements`에서 선생님이 공지 양식, 대상, 채널, 예약 시간을 선택해 공지를 등록할 수 있습니다.
+  - 일반 공지, 수행평가, 시험, 준비물, 일정 안내 템플릿을 제공하고 이미지 첨부를 지원합니다.
+  - 예약된 공지는 봇이 자동 발송하며, 실패/취소/발송 완료 상태를 웹에서 확인할 수 있습니다.
 - **자동 브리핑 알림**:
   - 매일 아침(7:30)에 오늘 일정, 저녁(19:30)에 내일 일정을 요약해서 알려줍니다.
 
@@ -61,14 +65,17 @@ python main.py
 SyncTask/
 ├── main.py                # 봇 엔트리포인트 및 초기 설정
 ├── core/
+│   ├── announcements.py   # 교사용 공지 템플릿/예약 발송 공통 로직
 │   └── neis_api.py        # NEIS OpenAPI 통신 (시간표/학사일정/시험 감지)
 ├── cogs/                  # 기능별 디스코드 Cog 모듈
+│   ├── announcements.py   # 예약 공지 자동 발송 루프
 │   ├── admin.py           # 일정 추가/수정/삭제 및 관리 명령어
 │   ├── school.py          # 시간표/시험범위 조회 및 동기화 명령어
 │   └── tasks.py           # 아침/저녁 브리핑 및 자동 새로고침 루프
 ├── web/                   # 웹 대시보드 모듈
 │   ├── server.py          # aiohttp 기반 웹 서버 
-│   └── templates/         # HTML 템플릿 (login.html, dashboard.html)
+│   ├── templates/         # HTML 템플릿 (login.html, dashboard.html, announcements.html)
+│   └── uploads/           # 공지 이미지 업로드 저장소 (자동 생성)
 ├── utils/
 │   └── ui.py              # "Quiet Signal" 디자인 시스템 (Embed/Button 통합)
 ├── requirements.txt       # 의존성 패키지

@@ -6,3 +6,4 @@ __pycache__/
 .idea/
 cmd_log.txt
 alimi_cmd_log.txt
+web/uploads/

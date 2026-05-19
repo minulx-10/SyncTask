@@ -342,7 +342,8 @@ class TasksCog(commands.Cog):
             # 액션에 따라 아이콘 결정
             icon = "➕" if "추가" in action or "승인" in action else "✏️" if "수정" in action else "🗑️" if "삭제" in action else "📋"
             time_short = created_at[5:16] if len(created_at) >= 16 else created_at  # MM-DD HH:MM
-            desc += f"{icon} **{action}** · <@{user_id}>\n　　{details}\n　　`{time_short}`\n\n"
+            actor = "교사용 웹" if int(user_id) == 0 else f"<@{user_id}>"
+            desc += f"{icon} **{action}** · {actor}\n　　{details}\n　　`{time_short}`\n\n"
 
         history_embed = embed(f"{E_HISTORY}  최근 변경 이력", desc.strip(), color=HISTORY_COLOR)
         await interaction.response.send_message(embed=history_embed)

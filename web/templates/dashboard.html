@@ -24,7 +24,10 @@
         .brand { display: flex; align-items: center; gap: 10px; }
         .brand-dot { width: 8px; height: 8px; background: var(--green); border-radius: 50%; box-shadow: 0 0 8px var(--green); }
         .brand-name { font-size: 1.15rem; font-weight: 700; letter-spacing: -0.02em; }
-        .header-badge { font-size: 0.75rem; color: var(--text-d); font-weight: 600; background: var(--surface); border: 1px solid var(--border); padding: 6px 14px; border-radius: 20px; }
+        .header-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+        .header-badge, .header-link { font-size: 0.75rem; color: var(--text-d); font-weight: 600; background: var(--surface); border: 1px solid var(--border); padding: 6px 14px; border-radius: 20px; text-decoration: none; }
+        .header-link { color: var(--text-s); }
+        .header-link:hover { border-color: var(--accent); color: var(--text); }
 
         /* ── Server Grid ── */
         .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; }
@@ -124,7 +127,10 @@
                 <div class="brand-dot"></div>
                 <div class="brand-name">SyncTask</div>
             </div>
-            <div class="header-badge">운영 로그</div>
+            <div class="header-actions">
+                <a class="header-link" href="/announcements">교사용 공지</a>
+                <div class="header-badge">운영 로그</div>
+            </div>
         </div>
 
         <div id="grid-view">

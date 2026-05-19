@@ -50,5 +50,33 @@ async def init_db():
             PRIMARY KEY (guild_id, date_str, grade, class_nm)
         )
     ''')
+    await db.execute('''
+        CREATE TABLE IF NOT EXISTS announcements (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            guild_id INTEGER NOT NULL,
+            channel_id INTEGER NOT NULL,
+            target_type TEXT NOT NULL,
+            target_label TEXT,
+            template_key TEXT NOT NULL,
+            title TEXT NOT NULL,
+            body TEXT NOT NULL,
+            date_text TEXT,
+            location TEXT,
+            deadline TEXT,
+            materials TEXT,
+            note TEXT,
+            image_filename TEXT,
+            scheduled_at TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'scheduled',
+            message_id TEXT,
+            sent_at TEXT,
+            last_error TEXT,
+            created_by TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+    ''')
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_announcements_due ON announcements (status, scheduled_at)')
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_announcements_guild ON announcements (guild_id, id)')
     await db.commit()
     return db
