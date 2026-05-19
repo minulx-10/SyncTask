@@ -78,5 +78,16 @@ async def init_db():
     ''')
     await db.execute('CREATE INDEX IF NOT EXISTS idx_announcements_due ON announcements (status, scheduled_at)')
     await db.execute('CREATE INDEX IF NOT EXISTS idx_announcements_guild ON announcements (guild_id, id)')
+    await db.execute('''
+        CREATE TABLE IF NOT EXISTS teacher_access (
+            guild_id INTEGER NOT NULL,
+            user_id INTEGER NOT NULL,
+            display_name TEXT NOT NULL,
+            granted_by INTEGER,
+            granted_at TEXT NOT NULL,
+            PRIMARY KEY (guild_id, user_id)
+        )
+    ''')
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_teacher_access_user ON teacher_access (user_id)')
     await db.commit()
     return db

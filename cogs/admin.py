@@ -1,11 +1,14 @@
+import os
+
 import discord
 from discord.ext import commands
 from discord import app_commands
+from core.teacher_access import grant_teacher_access, list_teacher_access, revoke_teacher_access
 from utils.logger import record_log
 from utils.ui import (
     DASHBOARD_COLOR, SETUP_COLOR, MUTED_COLOR, BRAND_COLOR, DIVIDER,
     E_SETTING, E_HELP, E_STAR, E_DASHBOARD, E_OK, E_TASK,
-    embed, ok,
+    embed, ok, warn,
 )
 
 SUPER_ADMINS = [771274777443696650]
@@ -18,6 +21,28 @@ def is_manager_or_admin():
             return True
         return False
     return app_commands.check(predicate)
+
+
+def get_teacher_announcement_url():
+    public_url = os.getenv("DASHBOARD_PUBLIC_URL")
+    if public_url:
+        return f"{public_url.rstrip('/')}/announcements"
+    host = os.getenv("DASHBOARD_HOST", "0.0.0.0")
+    port = os.getenv("DASHBOARD_PORT", "10000")
+    if host in ("0.0.0.0", "::"):
+        return None
+    return f"http://{host}:{port}/announcements"
+
+
+def get_oauth_setup_status():
+    missing = []
+    if not os.getenv("DISCORD_CLIENT_ID"):
+        missing.append("DISCORD_CLIENT_ID")
+    if not os.getenv("DISCORD_CLIENT_SECRET"):
+        missing.append("DISCORD_CLIENT_SECRET")
+    if not os.getenv("DASHBOARD_PUBLIC_URL") and not os.getenv("DISCORD_REDIRECT_URI"):
+        missing.append("DASHBOARD_PUBLIC_URL 또는 DISCORD_REDIRECT_URI")
+    return missing
 
 class AdminCog(commands.Cog):
     def __init__(self, bot):
@@ -60,6 +85,11 @@ class AdminCog(commands.Cog):
             value="`/알림설정`으로 DM 알림을 받을 수 있습니다.",
             inline=False,
         )
+        guide.add_field(
+            name="Step 5 · 교사용 공지 웹",
+            value="`/교사권한추가`로 선생님을 등록하고 `/공지작성링크`로 작성 링크를 전달합니다.",
+            inline=False,
+        )
         await interaction.response.send_message(embed=guide, ephemeral=True)
 
     @app_commands.command(name="도움말", description="SyncTask 주요 명령어와 사용 흐름을 확인합니다.")
@@ -79,6 +109,11 @@ class AdminCog(commands.Cog):
         help_embed.add_field(
             name="⚙️ 설정",
             value="`/시작` `/설정상태` `/학급설정`\n`/공지설정` `/로그채널설정` `/소개카드`",
+            inline=False,
+        )
+        help_embed.add_field(
+            name="🧑‍🏫 교사용 웹",
+            value="`/교사권한추가` `/교사권한삭제` `/교사권한목록`\n`/공지작성링크`",
             inline=False,
         )
         help_embed.add_field(
@@ -112,6 +147,14 @@ class AdminCog(commands.Cog):
         status_embed.add_field(name="학급", value=class_value, inline=True)
         status_embed.add_field(name="대시보드", value=dashboard_value, inline=True)
         status_embed.add_field(name="로그 채널", value=log_value, inline=True)
+
+        async with self.bot.db.execute("SELECT COUNT(*) FROM teacher_access WHERE guild_id=?", (interaction.guild_id,)) as cursor:
+            teacher_count = (await cursor.fetchone())[0]
+        oauth_missing = get_oauth_setup_status()
+        teacher_value = f"✅ 등록 {teacher_count}명" if teacher_count else "➖ 등록 없음"
+        if oauth_missing:
+            teacher_value += f"\nOAuth 설정 필요: `{', '.join(oauth_missing)}`"
+        status_embed.add_field(name="교사용 웹", value=teacher_value, inline=False)
 
         if not class_ok or not dash_ok:
             status_embed.set_footer(text="💡 /시작 에서 설정 순서를 확인할 수 있습니다.")
@@ -157,6 +200,89 @@ class AdminCog(commands.Cog):
         await self.bot.db.execute("REPLACE INTO config (guild_id, key, value) VALUES (?, 'admin_log_channel', ?)", (interaction.guild_id, str(channel.id)))
         await self.bot.db.commit()
         await interaction.response.send_message(ok(f"요청 채널을 {channel.mention}로 설정했습니다."), ephemeral=True)
+
+    @app_commands.command(name="교사권한추가", description="교사용 공지 웹 접근 권한을 부여합니다.")
+    @is_manager_or_admin()
+    async def add_teacher_access(self, interaction: discord.Interaction, teacher: discord.Member):
+        await record_log(interaction, "교사권한추가", f"대상:{teacher.display_name}({teacher.id})")
+        await grant_teacher_access(
+            self.bot.db,
+            interaction.guild_id,
+            teacher.id,
+            teacher.display_name,
+            interaction.user.id,
+        )
+        url = get_teacher_announcement_url()
+        if url:
+            await interaction.response.send_message(
+                ok(f"{teacher.mention} 교사용 공지 웹 권한을 등록했습니다.\n작성 링크: {url}"),
+                ephemeral=True,
+            )
+        else:
+            await interaction.response.send_message(
+                ok(f"{teacher.mention} 교사용 공지 웹 권한을 등록했습니다.\n")
+                + "\n"
+                + warn("외부 공유 링크를 만들려면 `.env`에 `DASHBOARD_PUBLIC_URL`을 설정해주세요."),
+                ephemeral=True,
+            )
+
+    @app_commands.command(name="교사권한삭제", description="교사용 공지 웹 접근 권한을 제거합니다.")
+    @is_manager_or_admin()
+    async def remove_teacher_access(self, interaction: discord.Interaction, teacher: discord.Member):
+        await record_log(interaction, "교사권한삭제", f"대상:{teacher.display_name}({teacher.id})")
+        removed = await revoke_teacher_access(self.bot.db, interaction.guild_id, teacher.id)
+        if removed:
+            await interaction.response.send_message(ok(f"{teacher.mention} 교사용 공지 웹 권한을 제거했습니다."), ephemeral=True)
+        else:
+            await interaction.response.send_message(warn("해당 선생님의 등록된 웹 권한을 찾지 못했습니다."), ephemeral=True)
+
+    @app_commands.command(name="교사권한목록", description="교사용 공지 웹 접근 권한 목록을 확인합니다.")
+    @is_manager_or_admin()
+    async def teacher_access_list(self, interaction: discord.Interaction):
+        await record_log(interaction, "교사권한목록")
+        teachers = await list_teacher_access(self.bot.db, interaction.guild_id)
+        if not teachers:
+            return await interaction.response.send_message(warn("등록된 교사용 웹 권한이 없습니다."), ephemeral=True)
+
+        lines = []
+        for item in teachers[:20]:
+            granted_at = item["granted_at"][5:16] if item.get("granted_at") else ""
+            lines.append(f"<@{item['user_id']}> · {item['display_name']} · `{granted_at}`")
+        access_embed = embed(
+            title=f"{E_SETTING}  교사용 웹 권한",
+            description="\n".join(lines),
+            color=SETUP_COLOR,
+        )
+        access_embed.set_footer(text=f"총 {len(teachers)}명 · {DIVIDER}")
+        await interaction.response.send_message(embed=access_embed, ephemeral=True)
+
+    @app_commands.command(name="공지작성링크", description="교사용 공지 작성 웹 링크와 설정 상태를 확인합니다.")
+    @is_manager_or_admin()
+    async def teacher_announcement_link(self, interaction: discord.Interaction):
+        await record_log(interaction, "공지작성링크")
+        url = get_teacher_announcement_url()
+        oauth_missing = get_oauth_setup_status()
+
+        link_embed = embed(
+            title=f"{E_DASHBOARD}  교사용 공지 작성 링크",
+            color=DASHBOARD_COLOR,
+        )
+        if url:
+            link_embed.description = f"[공지 작성 페이지 열기]({url})"
+        else:
+            link_embed.description = "`DASHBOARD_PUBLIC_URL`이 없어 외부 공유 링크를 만들 수 없습니다."
+        link_embed.add_field(
+            name="운영 순서",
+            value="`/교사권한추가`로 선생님 등록 → 링크 전달 → 선생님이 Discord 로그인 → 공지 작성/예약",
+            inline=False,
+        )
+        if oauth_missing:
+            link_embed.add_field(
+                name="필요한 환경 변수",
+                value="\n".join([f"`{name}`" for name in oauth_missing]),
+                inline=False,
+            )
+        await interaction.response.send_message(embed=link_embed, ephemeral=True)
 
 async def setup(bot):
     await bot.add_cog(AdminCog(bot))

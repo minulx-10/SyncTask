@@ -34,15 +34,19 @@ NEIS 학사일정 자동 연동부터 수행평가, 숙제, 시험 범위 관리
 
 ```env
 DISCORD_TOKEN=your_discord_bot_token
+DISCORD_CLIENT_ID=your_discord_application_client_id
+DISCORD_CLIENT_SECRET=your_discord_oauth_client_secret
 NEIS_API_KEY=your_neis_api_key
 ADMIN_PASSWORD=strong_admin_password
 DASHBOARD_PUBLIC_URL=https://your-dashboard.example.com
+# 직접 지정이 필요할 때만 사용합니다. 기본값은 DASHBOARD_PUBLIC_URL + /auth/discord/callback 입니다.
+DISCORD_REDIRECT_URI=https://your-dashboard.example.com/auth/discord/callback
 DASHBOARD_HOST=0.0.0.0
 DASHBOARD_PORT=10000
 GUILD_SYNC_ON_READY=1
 ```
 
-> **Note**: `ADMIN_PASSWORD`를 설정하지 않으면 웹 대시보드 로그인이 비활성화됩니다.
+> **Note**: 교사용 공지 웹은 Discord OAuth 로그인을 기본으로 사용합니다. Discord Developer Portal의 OAuth2 Redirects에 `https://your-dashboard.example.com/auth/discord/callback`을 등록해야 합니다. `ADMIN_PASSWORD`는 비상 관리자 로그인용으로만 사용합니다.
 
 ### 2. 의존성 설치
 Python 3.10 이상을 권장합니다.
@@ -55,6 +59,20 @@ pip install -r requirements.txt
 python main.py
 ```
 
+### 4. 교사용 공지 웹 운영 순서
+
+1. `.env`에 `DASHBOARD_PUBLIC_URL`, `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`을 설정합니다.
+2. Discord Developer Portal에서 Redirect URI를 `DASHBOARD_PUBLIC_URL/auth/discord/callback`으로 등록합니다.
+3. Discord 서버에서 `/교사권한추가 teacher:@선생님`으로 공지 작성 권한을 부여합니다.
+4. `/공지작성링크`로 교사용 링크와 OAuth 설정 상태를 확인합니다.
+5. 선생님은 링크에 접속해 Discord로 로그인한 뒤, 허용된 서버의 공지만 작성/예약할 수 있습니다.
+
+관리 명령어:
+- `/교사권한추가`: 교사용 공지 웹 접근 권한 부여
+- `/교사권한삭제`: 교사용 공지 웹 접근 권한 제거
+- `/교사권한목록`: 현재 등록된 선생님 목록 확인
+- `/공지작성링크`: 공유할 웹 링크와 설정 상태 확인
+
 ---
 
 ## 📂 프로젝트 아키텍처
@@ -66,6 +84,7 @@ SyncTask/
 ├── main.py                # 봇 엔트리포인트 및 초기 설정
 ├── core/
 │   ├── announcements.py   # 교사용 공지 템플릿/예약 발송 공통 로직
+│   ├── teacher_access.py  # Discord OAuth 기반 교사 접근 권한 관리
 │   └── neis_api.py        # NEIS OpenAPI 통신 (시간표/학사일정/시험 감지)
 ├── cogs/                  # 기능별 디스코드 Cog 모듈
 │   ├── announcements.py   # 예약 공지 자동 발송 루프
@@ -75,6 +94,7 @@ SyncTask/
 ├── web/                   # 웹 대시보드 모듈
 │   ├── server.py          # aiohttp 기반 웹 서버 
 │   ├── templates/         # HTML 템플릿 (login.html, dashboard.html, announcements.html)
+│   ├── static/            # 공통 CSS와 화면별 JS
 │   └── uploads/           # 공지 이미지 업로드 저장소 (자동 생성)
 ├── utils/
 │   └── ui.py              # "Quiet Signal" 디자인 시스템 (Embed/Button 통합)

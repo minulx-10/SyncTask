@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SyncTask · GSM 학급 알리미</title>
+    <meta name="description" content="광주소프트웨어마이스터고 학급 시간표, 숙제, 수행평가, 시험 범위를 한눈에 확인하세요.">
+    <meta name="theme-color" content="#0c0d10">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/app.css">
+    <link rel="manifest" href="/static/manifest.json">
+</head>
+<body>
+    <div class="app home-app">
+        <header class="topbar">
+            <div class="brand">
+                <div class="brand-dot"></div>
+                <div class="brand-name">SyncTask</div>
+            </div>
+            <nav class="nav">
+                <a class="nav-link active" href="/">대시보드</a>
+                <a class="nav-link" id="nav-announcements" href="/announcements" style="display:none;">공지 작성</a>
+                <a class="nav-link" id="nav-admin" href="/admin/logs" style="display:none;">운영 로그</a>
+                <span class="nav-pill" id="user-pill">
+                    <a href="/login" id="login-link" class="nav-login-link">로그인</a>
+                </span>
+            </nav>
+        </header>
+
+        <!-- Hero Section -->
+        <section class="hero">
+            <div class="hero-content">
+                <h1 class="hero-title">
+                    <span class="hero-icon">📋</span>
+                    학급 일정 대시보드
+                </h1>
+                <p class="hero-sub" id="hero-sub">시간표 · 과제 · 수행평가 · 시험을 한눈에</p>
+            </div>
+            <div class="hero-meta">
+                <select class="guild-select" id="guild-select"></select>
+                <span class="hero-clock" id="hero-clock"></span>
+            </div>
+        </section>
+
+        <!-- Main Dashboard Grid -->
+        <main class="dash-grid" id="main-grid">
+
+            <!-- Today's Timetable -->
+            <section class="card card-schedule" id="card-timetable">
+                <div class="card-header">
+                    <div class="card-icon">📚</div>
+                    <div>
+                        <div class="card-title" id="timetable-title">오늘 시간표</div>
+                        <div class="card-sub" id="timetable-date">불러오는 중...</div>
+                    </div>
+                    <button class="card-toggle" id="toggle-tomorrow" title="내일 보기">내일 →</button>
+                </div>
+                <div class="card-body" id="timetable-body">
+                    <div class="skeleton-loader">
+                        <div class="skeleton-line"></div>
+                        <div class="skeleton-line short"></div>
+                        <div class="skeleton-line"></div>
+                        <div class="skeleton-line short"></div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Upcoming Tasks -->
+            <section class="card card-tasks" id="card-tasks">
+                <div class="card-header">
+                    <div class="card-icon">📌</div>
+                    <div>
+                        <div class="card-title">다가오는 일정</div>
+                        <div class="card-sub" id="tasks-count">불러오는 중...</div>
+                    </div>
+                </div>
+                <div class="card-body" id="tasks-body">
+                    <div class="skeleton-loader">
+                        <div class="skeleton-line"></div>
+                        <div class="skeleton-line short"></div>
+                        <div class="skeleton-line"></div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Exam Info -->
+            <section class="card card-exam" id="card-exam">
+                <div class="card-header">
+                    <div class="card-icon">📝</div>
+                    <div>
+                        <div class="card-title">시험 정보</div>
+                        <div class="card-sub" id="exam-sub">D-Day · 시험 범위</div>
+                    </div>
+                </div>
+                <div class="card-body" id="exam-body">
+                    <div class="skeleton-loader">
+                        <div class="skeleton-line"></div>
+                        <div class="skeleton-line short"></div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Weekly Summary -->
+            <section class="card card-weekly" id="card-weekly">
+                <div class="card-header">
+                    <div class="card-icon">🔔</div>
+                    <div>
+                        <div class="card-title">이번 주 요약</div>
+                        <div class="card-sub" id="weekly-range"></div>
+                    </div>
+                </div>
+                <div class="card-body" id="weekly-body">
+                    <div class="skeleton-loader">
+                        <div class="skeleton-line"></div>
+                        <div class="skeleton-line short"></div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- School Events -->
+            <section class="card card-events full-span" id="card-events">
+                <div class="card-header">
+                    <div class="card-icon">🏫</div>
+                    <div>
+                        <div class="card-title" id="events-title">학사일정</div>
+                        <div class="card-sub" id="events-month"></div>
+                    </div>
+                    <div class="month-nav">
+                        <button class="card-toggle" id="month-prev">←</button>
+                        <button class="card-toggle" id="month-next">→</button>
+                    </div>
+                </div>
+                <div class="card-body" id="events-body">
+                    <div class="skeleton-loader">
+                        <div class="skeleton-line"></div>
+                        <div class="skeleton-line short"></div>
+                    </div>
+                </div>
+            </section>
+
+        </main>
+
+        <footer class="home-footer">
+            <p>SyncTask · GSM 알리미 · 학급 일정 관리 시스템</p>
+            <p class="footer-dim">디스코드에서 <code>/도움말</code>을 입력하면 봇 명령어를 확인할 수 있습니다.</p>
+        </footer>
+    </div>
+
+    <script src="/static/home.js"></script>
+</body>
+</html>

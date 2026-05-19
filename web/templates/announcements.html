@@ -3,210 +3,51 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SyncTask · Announcements</title>
+    <title>SyncTask · Teacher Announcements</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-    <style>
-        :root {
-            --bg: #0c0d10;
-            --surface: #16181d;
-            --surface-2: #1d2028;
-            --border: #2a2d35;
-            --accent: #5865F2;
-            --accent-h: #4752c4;
-            --mint: #2EECD6;
-            --amber: #f59e0b;
-            --green: #57F287;
-            --red: #ed4245;
-            --text: #e4e6ea;
-            --text-s: #a8b0bd;
-            --text-d: #6b7280;
-        }
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-            background: var(--bg);
-            color: var(--text);
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-            min-height: 100vh;
-            letter-spacing: 0;
-        }
-        button, input, select, textarea { font: inherit; }
-        button { border: 0; cursor: pointer; }
-        .app { width: min(1180px, 100%); margin: 0 auto; padding: 28px 22px 56px; }
-        .header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 16px;
-            margin-bottom: 24px;
-        }
-        .brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
-        .brand-dot { width: 8px; height: 8px; background: var(--mint); border-radius: 50%; box-shadow: 0 0 9px var(--mint); }
-        .brand-name { font-size: 1.08rem; font-weight: 800; }
-        .nav { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
-        .nav a {
-            color: var(--text-s);
-            text-decoration: none;
-            font-size: 0.8rem;
-            font-weight: 700;
-            background: var(--surface);
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            padding: 8px 12px;
-        }
-        .nav a.active { color: #fff; border-color: rgba(88, 101, 242, 0.8); background: rgba(88, 101, 242, 0.18); }
-        .layout { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(340px, 0.95fr); gap: 18px; align-items: start; }
-        .panel {
-            background: var(--surface);
-            border: 1px solid var(--border);
-            border-radius: 10px;
-            overflow: hidden;
-        }
-        .panel-head {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 12px;
-            padding: 18px 20px;
-            border-bottom: 1px solid var(--border);
-        }
-        .panel-title { font-size: 0.94rem; font-weight: 800; }
-        .status-line { color: var(--text-d); font-size: 0.78rem; font-weight: 600; }
-        form { padding: 18px 20px 20px; display: grid; gap: 16px; }
-        .row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-        .field { display: grid; gap: 7px; min-width: 0; }
-        label { color: var(--text-s); font-size: 0.78rem; font-weight: 700; }
-        input, select, textarea {
-            width: 100%;
-            background: #0f1117;
-            color: var(--text);
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            padding: 11px 12px;
-            outline: none;
-            transition: border-color 0.16s, background 0.16s;
-        }
-        textarea { min-height: 112px; resize: vertical; line-height: 1.5; }
-        input:focus, select:focus, textarea:focus { border-color: var(--accent); background: #10131a; }
-        input::placeholder, textarea::placeholder { color: #535b68; }
-        .file-input { padding: 9px 12px; color: var(--text-s); }
-        .actions { display: flex; gap: 10px; flex-wrap: wrap; }
-        .btn {
-            min-height: 42px;
-            border-radius: 8px;
-            padding: 0 15px;
-            color: #fff;
-            font-weight: 800;
-            background: var(--accent);
-            transition: transform 0.1s, background 0.16s, opacity 0.16s;
-        }
-        .btn:hover { background: var(--accent-h); }
-        .btn:active { transform: translateY(1px); }
-        .btn.secondary { background: #242833; color: var(--text); border: 1px solid var(--border); }
-        .btn.secondary:hover { background: #2b303d; }
-        .btn.warn { background: rgba(245, 158, 11, 0.18); color: #ffd18a; border: 1px solid rgba(245, 158, 11, 0.35); }
-        .btn.danger { background: rgba(237, 66, 69, 0.14); color: #ff9a9c; border: 1px solid rgba(237, 66, 69, 0.35); }
-        .btn:disabled { opacity: 0.55; cursor: wait; }
-        .preview-wrap { padding: 18px 20px 20px; }
-        .discord-preview {
-            border-left: 4px solid var(--accent);
-            background: #20232b;
-            border-radius: 8px;
-            padding: 14px 16px;
-            min-height: 180px;
-        }
-        .preview-title { font-weight: 800; margin-bottom: 10px; }
-        .preview-body { color: var(--text-s); line-height: 1.55; white-space: pre-wrap; word-break: break-word; }
-        .preview-fields { display: grid; gap: 10px; margin-top: 14px; }
-        .preview-field-name { color: #fff; font-size: 0.78rem; font-weight: 800; margin-bottom: 4px; }
-        .preview-field-value { color: var(--text-s); font-size: 0.86rem; white-space: pre-wrap; word-break: break-word; }
-        .preview-footer { color: var(--text-d); font-size: 0.74rem; margin-top: 14px; }
-        .message {
-            display: none;
-            margin: 0 20px 18px;
-            padding: 12px 14px;
-            border-radius: 8px;
-            font-size: 0.84rem;
-            line-height: 1.45;
-            border: 1px solid var(--border);
-            background: #11141b;
-        }
-        .message.ok { display: block; border-color: rgba(87, 242, 135, 0.28); color: #b9f7cb; }
-        .message.err { display: block; border-color: rgba(237, 66, 69, 0.35); color: #ffb3b4; }
-        .list { display: grid; gap: 10px; padding: 18px 20px 20px; }
-        .item {
-            background: #10131a;
-            border: 1px solid var(--border);
-            border-radius: 9px;
-            padding: 14px;
-            display: grid;
-            gap: 10px;
-        }
-        .item-top { display: flex; justify-content: space-between; gap: 12px; align-items: start; }
-        .item-title { min-width: 0; }
-        .item-title strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.9rem; }
-        .item-meta { color: var(--text-d); font-size: 0.76rem; margin-top: 4px; }
-        .badge {
-            flex-shrink: 0;
-            border-radius: 999px;
-            padding: 5px 9px;
-            font-size: 0.72rem;
-            font-weight: 800;
-            background: rgba(88, 101, 242, 0.18);
-            color: #c9ceff;
-            border: 1px solid rgba(88, 101, 242, 0.28);
-        }
-        .badge.sent { color: #b9f7cb; border-color: rgba(87, 242, 135, 0.28); background: rgba(87, 242, 135, 0.12); }
-        .badge.failed { color: #ffb3b4; border-color: rgba(237, 66, 69, 0.35); background: rgba(237, 66, 69, 0.12); }
-        .badge.cancelled { color: var(--text-d); border-color: var(--border); background: #171a21; }
-        .item-body { color: var(--text-s); font-size: 0.82rem; line-height: 1.48; white-space: pre-wrap; word-break: break-word; }
-        .item-actions { display: flex; gap: 8px; flex-wrap: wrap; }
-        .small-btn {
-            min-height: 32px;
-            padding: 0 10px;
-            font-size: 0.75rem;
-            border-radius: 7px;
-            font-weight: 800;
-            color: var(--text);
-            background: #242833;
-            border: 1px solid var(--border);
-        }
-        .small-btn:hover { background: #2b303d; }
-        .small-btn.warn { color: #ffd18a; border-color: rgba(245, 158, 11, 0.35); background: rgba(245, 158, 11, 0.13); }
-        .small-btn.danger { color: #ff9a9c; border-color: rgba(237, 66, 69, 0.35); background: rgba(237, 66, 69, 0.13); }
-        .empty { color: var(--text-d); text-align: center; padding: 48px 12px; font-size: 0.86rem; }
-        @media (max-width: 900px) {
-            .layout { grid-template-columns: 1fr; }
-        }
-        @media (max-width: 620px) {
-            .app { padding: 20px 14px 42px; }
-            .header, .panel-head, .item-top { align-items: stretch; flex-direction: column; }
-            .nav { justify-content: flex-start; }
-            .row { grid-template-columns: 1fr; }
-            .actions .btn { width: 100%; }
-        }
-    </style>
+    <link rel="stylesheet" href="/static/app.css">
 </head>
 <body>
     <div class="app">
-        <header class="header">
+        <header class="topbar">
             <div class="brand">
                 <div class="brand-dot"></div>
                 <div class="brand-name">SyncTask</div>
             </div>
             <nav class="nav">
-                <a href="/">운영 로그</a>
-                <a class="active" href="/announcements">교사용 공지</a>
+                <a class="nav-link" href="/">대시보드</a>
+                <a class="nav-link" id="log-link" href="/admin/logs" style="display:none;">운영 로그</a>
+                <a class="nav-link active" href="/announcements">교사용 공지</a>
+                <span class="nav-pill" id="user-pill">로그인 확인 중</span>
+                <a class="nav-link" href="/logout">로그아웃</a>
             </nav>
         </header>
 
         <main class="layout">
-            <section class="panel">
+            <section class="panel full-span" id="no-access" style="display:none;">
+                <div class="panel-head">
+                    <div class="panel-title">접근 권한이 없습니다</div>
+                    <div class="status-line">Discord 인증 완료</div>
+                </div>
+                <div class="guide-list">
+                    <div class="guide-step">
+                        <strong>관리자에게 권한 등록을 요청하세요.</strong>
+                        <span>서버 관리자나 메시지 관리 권한자가 Discord에서 `/교사권한추가` 명령어로 선생님 계정을 등록해야 합니다.</span>
+                    </div>
+                    <div class="guide-step">
+                        <strong>권한 등록 후 같은 링크로 다시 접속하면 됩니다.</strong>
+                        <span>등록된 서버만 목록에 표시되며, 다른 서버의 공지 목록이나 채널은 볼 수 없습니다.</span>
+                    </div>
+                </div>
+            </section>
+
+            <section class="panel" id="form-panel">
                 <div class="panel-head">
                     <div class="panel-title">공지 작성</div>
                     <div class="status-line" id="context-status">불러오는 중</div>
                 </div>
-                <form id="announcement-form">
+                <form class="form-grid" id="announcement-form">
                     <div class="row">
                         <div class="field">
                             <label for="guild_id">서버</label>
@@ -225,7 +66,7 @@
                         </div>
                         <div class="field">
                             <label for="target_label">대상 설명</label>
-                            <input id="target_label" name="target_label" placeholder="예: 2학년 전체, 3-2, 자바 동아리">
+                            <input id="target_label" name="target_label" placeholder="예: 2학년 전체, 3-2">
                         </div>
                     </div>
 
@@ -301,7 +142,28 @@
                 </div>
             </section>
 
-            <section class="panel" style="grid-column: 1 / -1;">
+            <section class="panel">
+                <div class="panel-head">
+                    <div class="panel-title">빠른 가이드</div>
+                    <div class="status-line">선생님용</div>
+                </div>
+                <div class="guide-list">
+                    <div class="guide-step">
+                        <strong>1. 서버와 채널 선택</strong>
+                        <span>권한이 있는 서버만 보입니다. 실제 공지가 올라갈 디스코드 채널을 고릅니다.</span>
+                    </div>
+                    <div class="guide-step">
+                        <strong>2. 양식 선택 후 필요한 칸만 입력</strong>
+                        <span>수행평가, 시험, 준비물 같은 양식을 고르면 미리보기 문장이 자동으로 정리됩니다.</span>
+                    </div>
+                    <div class="guide-step">
+                        <strong>3. 예약 또는 지금 발송</strong>
+                        <span>예약 시간은 한국 시간 기준입니다. 이미지는 5MB 이하만 첨부할 수 있습니다.</span>
+                    </div>
+                </div>
+            </section>
+
+            <section class="panel full-span">
                 <div class="panel-head">
                     <div class="panel-title">공지 목록</div>
                     <div class="status-line" id="list-status">최근 80개</div>
@@ -311,245 +173,6 @@
         </main>
     </div>
 
-    <script>
-        const state = { guilds: [], templates: [], targetTypes: [], busy: false };
-        const form = document.getElementById('announcement-form');
-        const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-
-        function setMessage(text, type) {
-            const el = document.getElementById('message');
-            el.textContent = text || '';
-            el.className = `message ${text ? type : ''}`;
-        }
-
-        function getPayload() {
-            const fd = new FormData(form);
-            return {
-                guild_id: fd.get('guild_id') || '',
-                channel_id: fd.get('channel_id') || '',
-                target_type: fd.get('target_type') || '전체',
-                target_label: fd.get('target_label') || '',
-                template_key: fd.get('template_key') || 'general',
-                title: fd.get('title') || '',
-                body: fd.get('body') || '',
-                date_text: fd.get('date_text') || '',
-                location: fd.get('location') || '',
-                deadline: fd.get('deadline') || '',
-                materials: fd.get('materials') || '',
-                note: fd.get('note') || '',
-                scheduled_at: fd.get('scheduled_at') || ''
-            };
-        }
-
-        function setDefaultSchedule() {
-            const target = new Date(Date.now() + 10 * 60 * 1000);
-            target.setSeconds(0, 0);
-            const local = new Date(target.getTime() - target.getTimezoneOffset() * 60000);
-            document.getElementById('scheduled_at').value = local.toISOString().slice(0, 16);
-        }
-
-        function selectedGuild() {
-            const id = document.getElementById('guild_id').value;
-            return state.guilds.find(g => g.id === id);
-        }
-
-        function renderGuilds() {
-            const guildSelect = document.getElementById('guild_id');
-            guildSelect.innerHTML = state.guilds.map(g => `<option value="${esc(g.id)}">${esc(g.name)}</option>`).join('');
-            renderChannels();
-        }
-
-        function renderChannels() {
-            const channelSelect = document.getElementById('channel_id');
-            const guild = selectedGuild();
-            const channels = guild ? guild.channels : [];
-            channelSelect.innerHTML = channels.length
-                ? channels.map(c => `<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('')
-                : '<option value="">발송 가능한 채널 없음</option>';
-            loadAnnouncements();
-            updatePreview();
-        }
-
-        function renderTemplateOptions() {
-            document.getElementById('template_key').innerHTML = state.templates
-                .map(t => `<option value="${esc(t.key)}">${esc(t.label)}</option>`)
-                .join('');
-            document.getElementById('target_type').innerHTML = state.targetTypes
-                .map(t => `<option value="${esc(t)}">${esc(t)}</option>`)
-                .join('');
-            updateBodyLabel();
-        }
-
-        function updateBodyLabel() {
-            const key = document.getElementById('template_key').value;
-            const template = state.templates.find(t => t.key === key);
-            document.getElementById('body-label').textContent = template ? template.body_label : '내용';
-        }
-
-        function renderPreview(preview) {
-            const el = document.getElementById('preview');
-            el.style.borderLeftColor = preview.color || '#5865F2';
-            el.innerHTML = `
-                <div class="preview-title">${esc(preview.title)}</div>
-                <div class="preview-body">${esc(preview.description)}</div>
-                <div class="preview-fields">
-                    ${(preview.fields || []).map(f => `
-                        <div>
-                            <div class="preview-field-name">${esc(f.name)}</div>
-                            <div class="preview-field-value">${esc(f.value)}</div>
-                        </div>
-                    `).join('')}
-                </div>
-                <div class="preview-footer">${esc(preview.footer)}</div>
-            `;
-        }
-
-        let previewTimer = null;
-        function queuePreview() {
-            clearTimeout(previewTimer);
-            previewTimer = setTimeout(updatePreview, 180);
-        }
-
-        async function updatePreview() {
-            try {
-                const res = await fetch('/api/announcements/preview', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(getPayload())
-                });
-                const data = await res.json();
-                if (!data.ok) throw new Error(data.error || '미리보기 실패');
-                renderPreview(data.preview);
-                document.getElementById('preview-status').textContent = '자동 갱신';
-            } catch (err) {
-                document.getElementById('preview-status').textContent = err.message;
-            }
-        }
-
-        function statusClass(status) {
-            if (status === 'sent') return 'sent';
-            if (status === 'failed') return 'failed';
-            if (status === 'cancelled') return 'cancelled';
-            return '';
-        }
-
-        function compactTime(value) {
-            if (!value) return '';
-            return value.replace(/^\d{4}-/, '').replace('-', '/').slice(0, 14);
-        }
-
-        function renderAnnouncements(items) {
-            const list = document.getElementById('announcement-list');
-            if (!items.length) {
-                list.innerHTML = '<div class="empty">등록된 공지가 없습니다.</div>';
-                return;
-            }
-            list.innerHTML = items.map(item => `
-                <article class="item">
-                    <div class="item-top">
-                        <div class="item-title">
-                            <strong>${esc(item.preview.title)}</strong>
-                            <div class="item-meta">${esc(item.guild_name)} · ${esc(item.channel_name)} · ${esc(item.target_display)} · ${compactTime(item.scheduled_at)}</div>
-                        </div>
-                        <span class="badge ${statusClass(item.status)}">${esc(item.status_label)}</span>
-                    </div>
-                    <div class="item-body">${esc(item.preview.description).slice(0, 260)}</div>
-                    ${item.last_error ? `<div class="item-body" style="color:#ffb3b4;">${esc(item.last_error)}</div>` : ''}
-                    <div class="item-actions">
-                        ${item.can_send_now ? `<button class="small-btn warn" onclick="sendNow(${item.id})">지금 발송</button>` : ''}
-                        ${item.can_cancel ? `<button class="small-btn danger" onclick="cancelAnnouncement(${item.id})">취소</button>` : ''}
-                    </div>
-                </article>
-            `).join('');
-        }
-
-        async function loadAnnouncements() {
-            const guildId = document.getElementById('guild_id').value;
-            const url = guildId ? `/api/announcements?guild_id=${encodeURIComponent(guildId)}` : '/api/announcements';
-            try {
-                const res = await fetch(url);
-                const data = await res.json();
-                if (!data.ok) throw new Error(data.error || '목록 조회 실패');
-                renderAnnouncements(data.announcements || []);
-                document.getElementById('list-status').textContent = `${(data.announcements || []).length}개`;
-            } catch (err) {
-                document.getElementById('announcement-list').innerHTML = `<div class="empty">${esc(err.message)}</div>`;
-            }
-        }
-
-        async function cancelAnnouncement(id) {
-            const res = await fetch(`/api/announcements/${id}/cancel`, { method: 'POST' });
-            const data = await res.json();
-            setMessage(data.ok ? '예약 공지를 취소했습니다.' : (data.error || '취소할 수 없습니다.'), data.ok ? 'ok' : 'err');
-            loadAnnouncements();
-        }
-
-        async function sendNow(id) {
-            const res = await fetch(`/api/announcements/${id}/send_now`, { method: 'POST' });
-            const data = await res.json();
-            setMessage(data.ok ? '공지 발송을 완료했습니다.' : (data.error || '발송에 실패했습니다.'), data.ok ? 'ok' : 'err');
-            loadAnnouncements();
-        }
-
-        async function loadContext() {
-            try {
-                const res = await fetch('/api/announcement_context');
-                const data = await res.json();
-                state.guilds = data.guilds || [];
-                state.templates = data.templates || [];
-                state.targetTypes = data.target_types || ['전체'];
-                renderGuilds();
-                renderTemplateOptions();
-                document.getElementById('context-status').textContent = `${state.guilds.length}개 서버`;
-                setDefaultSchedule();
-                updatePreview();
-                loadAnnouncements();
-            } catch (err) {
-                document.getElementById('context-status').textContent = err.message;
-            }
-        }
-
-        form.addEventListener('input', queuePreview);
-        form.addEventListener('change', event => {
-            if (event.target.id === 'guild_id') renderChannels();
-            if (event.target.id === 'template_key') updateBodyLabel();
-            queuePreview();
-        });
-
-        form.addEventListener('submit', async event => {
-            event.preventDefault();
-            if (state.busy) return;
-            state.busy = true;
-            setMessage('', '');
-            const submitter = event.submitter;
-            const action = submitter?.dataset.action || 'schedule';
-            const fd = new FormData(form);
-            fd.set('action', action);
-            document.querySelectorAll('.btn').forEach(btn => btn.disabled = true);
-            try {
-                const res = await fetch('/api/announcements', { method: 'POST', body: fd });
-                const data = await res.json();
-                if (!data.ok) {
-                    const msg = data.send_error || data.error || '처리에 실패했습니다.';
-                    setMessage(msg, data.announcement ? 'err' : 'err');
-                } else {
-                    setMessage(action === 'immediate' ? '공지 발송을 완료했습니다.' : '공지 예약을 저장했습니다.', 'ok');
-                    form.reset();
-                    renderGuilds();
-                    setDefaultSchedule();
-                }
-                updatePreview();
-                loadAnnouncements();
-            } catch (err) {
-                setMessage(err.message, 'err');
-            } finally {
-                state.busy = false;
-                document.querySelectorAll('.btn').forEach(btn => btn.disabled = false);
-            }
-        });
-
-        loadContext();
-        setInterval(loadAnnouncements, 15000);
-    </script>
+    <script src="/static/announcements.js"></script>
 </body>
 </html>

@@ -5,58 +5,49 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SyncTask · Login</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-            background: #0c0d10;
-            color: #e4e6ea;
-            font-family: 'Inter', -apple-system, sans-serif;
-            display: flex; justify-content: center; align-items: center;
-            min-height: 100vh;
-        }
-        .login-card {
-            width: 380px;
-            background: #16181d;
-            border: 1px solid #2a2d35;
-            border-radius: 16px;
-            padding: 48px 36px;
-            text-align: center;
-        }
-        .logo { font-size: 2rem; margin-bottom: 8px; }
-        .title { font-size: 1.1rem; font-weight: 700; color: #fff; margin-bottom: 4px; }
-        .subtitle { font-size: 0.8rem; color: #6b7280; margin-bottom: 32px; }
-        input {
-            width: 100%; padding: 14px 16px;
-            background: #0c0d10; border: 1px solid #2a2d35;
-            border-radius: 10px; color: #fff;
-            font-size: 0.9rem; outline: none;
-            transition: border-color 0.2s;
-        }
-        input:focus { border-color: #5865F2; }
-        input::placeholder { color: #4b5563; }
-        button {
-            width: 100%; padding: 14px;
-            background: #5865F2; color: #fff;
-            border: none; border-radius: 10px;
-            font-size: 0.9rem; font-weight: 600;
-            cursor: pointer; margin-top: 16px;
-            transition: background 0.2s, transform 0.1s;
-        }
-        button:hover { background: #4752c4; }
-        button:active { transform: scale(0.98); }
-        .error { color: #ed4245; font-size: 0.8rem; margin-top: 12px; }
-    </style>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/app.css">
 </head>
 <body>
-    <div class="login-card">
-        <div class="logo">🔒</div>
-        <div class="title">SyncTask Admin</div>
-        <div class="subtitle">관리자 인증이 필요합니다</div>
-        <form action="/do_login" method="post">
-            <input type="password" name="password" placeholder="비밀번호 입력" required autofocus>
-            <button type="submit">로그인</button>
-        </form>
-    </div>
+    <main class="login-shell">
+        <section class="login-card">
+            <div class="brand">
+                <div class="brand-dot"></div>
+                <div class="brand-name">SyncTask</div>
+            </div>
+            <h1 class="login-title">교사용 공지 웹</h1>
+            <p class="login-subtitle">Discord 계정으로 로그인하면 등록된 선생님에게 허용된 서버만 표시됩니다.</p>
+
+            <div class="login-actions">
+                <a class="btn" id="discord-login" href="{{OAUTH_URL}}">Discord로 로그인</a>
+                <p class="login-note" id="oauth-status">{{OAUTH_STATUS}}</p>
+            </div>
+
+            <div class="divider"></div>
+
+            <form action="/do_login" method="post" id="password-form">
+                <div class="field">
+                    <label for="password">비상 관리자 비밀번호</label>
+                    <input id="password" type="password" name="password" placeholder="관리자 비밀번호">
+                </div>
+                <button class="btn secondary" type="submit">관리자로 로그인</button>
+            </form>
+            <p class="login-note">공유 링크: {{PUBLIC_URL}}</p>
+        </section>
+    </main>
+
+    <script>
+        const oauthUrl = "{{OAUTH_URL}}";
+        const passwordEnabled = "{{PASSWORD_ENABLED}}" === "1";
+        if (!oauthUrl) {
+            const login = document.getElementById('discord-login');
+            login.classList.add('secondary');
+            login.removeAttribute('href');
+            login.textContent = 'Discord OAuth 설정 필요';
+        }
+        if (!passwordEnabled) {
+            document.getElementById('password-form').style.display = 'none';
+        }
+    </script>
 </body>
 </html>
