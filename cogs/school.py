@@ -86,15 +86,18 @@ class SchoolCog(commands.Cog):
 
         if not exam_data:
             return await interaction.followup.send(
-                warn("올해 학사일정에서 중간고사/기말고사 일정을 찾지 못했습니다.\n"
+                warn("이번 학기 학사일정에서 시험 일정을 찾지 못했습니다.\n"
                      "아직 NEIS에 등록되지 않았을 수 있어요."),
                 ephemeral=True,
             )
 
+        semester = exam_data.pop("semester", "")
         result_lines = []
         name_map = {"midterm_date": "1차 지필평가 (중간)", "final_date": "2차 지필평가 (기말)"}
 
         for key, date_str in exam_data.items():
+            if key not in name_map:
+                continue
             await self.bot.db.execute(
                 "REPLACE INTO config (guild_id, key, value) VALUES (?, ?, ?)",
                 (interaction.guild_id, key, date_str),
@@ -104,8 +107,8 @@ class SchoolCog(commands.Cog):
         await self.bot.db.commit()
 
         sync_embed = embed(
-            title=f"{E_EXAM}  시험 일정 자동 동기화 완료",
-            description="NEIS 학사일정에서 감지된 시험 일정을\n자동으로 설정했습니다.",
+            title=f"{E_EXAM}  {semester} 시험 일정 동기화 완료",
+            description=f"NEIS 학사일정에서 **{semester}** 시험 일정을\n자동으로 감지하여 설정했습니다.",
             color=SUCCESS_COLOR,
         )
         sync_embed.add_field(

@@ -86,19 +86,30 @@ async def fetch_neis_school_schedule(start_date: str, end_date: str) -> list:
     return None
 
 
-async def fetch_neis_exam_dates(year: int) -> dict:
+async def fetch_neis_exam_dates(year: int, month: int = None) -> dict:
     """
-    해당 연도의 학사일정에서 중간고사/기말고사 날짜를 자동 감지한다.
-    반환: {"midterm_date": "MM/DD~MM/DD", "final_date": "MM/DD~MM/DD"} 또는 빈 dict
+    현재 학기의 학사일정에서 중간(1차)/기말(2차) 시험 날짜를 자동 감지한다.
+    학기 구분: 1학기(3~8월), 2학기(9~2월)
+    반환: {"midterm_date": "MM/DD~MM/DD", "final_date": "MM/DD~MM/DD", "semester": "1학기"} 또는 빈 dict
     """
     if not os.getenv("NEIS_API_KEY"):
         return {}
 
-    url = "https://open.neis.go.kr/hub/SchoolSchedule"
-    # 1년치 전체 조회 (3월~다음해 2월)
-    start_date = f"{year}0301"
-    end_date = f"{year + 1}0228"
+    import datetime
+    if month is None:
+        month = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=9))).month
 
+    # 현재 학기 판단 및 조회 범위 설정
+    if 3 <= month <= 8:
+        semester = "1학기"
+        start_date = f"{year}0301"
+        end_date = f"{year}0831"
+    else:
+        semester = "2학기"
+        start_date = f"{year}0901"
+        end_date = f"{year + 1}0228"
+
+    url = "https://open.neis.go.kr/hub/SchoolSchedule"
     params = {
         "KEY": os.getenv("NEIS_API_KEY"),
         "Type": "json", "pIndex": 1, "pSize": 500,
@@ -122,7 +133,7 @@ async def fetch_neis_exam_dates(year: int) -> dict:
 
                 rows = data["SchoolSchedule"][1]["row"]
 
-                # 시험 키워드 감지 — 학교마다 명칭이 다를 수 있음
+                # 시험 키워드 감지
                 # 일반고: "중간고사", "기말고사"
                 # 마이스터고(GSM): "1차 지필평가", "2차 지필평가"
                 midterm_dates = []
@@ -143,7 +154,7 @@ async def fetch_neis_exam_dates(year: int) -> dict:
                     elif "2차" in name and "지필" in name:
                         final_dates.append(date)
 
-                result = {}
+                result = {"semester": semester}
 
                 if midterm_dates:
                     midterm_dates.sort()
@@ -161,6 +172,9 @@ async def fetch_neis_exam_dates(year: int) -> dict:
                     e_fmt = f"{int(e[4:6]):02d}/{int(e[6:8]):02d}"
                     result["final_date"] = f"{s_fmt}~{e_fmt}" if s != e else s_fmt
 
+                # semester만 있고 시험 날짜가 없으면 빈 dict 반환
+                if len(result) <= 1:
+                    return {}
                 return result
     except Exception:
         return {}
