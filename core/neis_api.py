@@ -122,16 +122,25 @@ async def fetch_neis_exam_dates(year: int) -> dict:
 
                 rows = data["SchoolSchedule"][1]["row"]
 
-                # "중간고사", "기말고사" 키워드가 포함된 행사를 찾아 날짜를 수집
+                # 시험 키워드 감지 — 학교마다 명칭이 다를 수 있음
+                # 일반고: "중간고사", "기말고사"
+                # 마이스터고(GSM): "1차 지필평가", "2차 지필평가"
                 midterm_dates = []
                 final_dates = []
 
                 for r in rows:
                     name = r["EVENT_NM"]
                     date = r["AA_YMD"]  # YYYYMMDD
+
+                    # ── 일반 패턴: 중간/기말 ──
                     if "중간" in name and ("고사" in name or "시험" in name or "평가" in name):
                         midterm_dates.append(date)
                     elif "기말" in name and ("고사" in name or "시험" in name or "평가" in name):
+                        final_dates.append(date)
+                    # ── 마이스터고 패턴: 1차/2차 지필평가 ──
+                    elif "1차" in name and "지필" in name:
+                        midterm_dates.append(date)
+                    elif "2차" in name and "지필" in name:
                         final_dates.append(date)
 
                 result = {}

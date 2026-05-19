@@ -92,7 +92,7 @@ class SchoolCog(commands.Cog):
             )
 
         result_lines = []
-        name_map = {"midterm_date": "중간고사", "final_date": "기말고사"}
+        name_map = {"midterm_date": "1차 지필평가 (중간)", "final_date": "2차 지필평가 (기말)"}
 
         for key, date_str in exam_data.items():
             await self.bot.db.execute(
