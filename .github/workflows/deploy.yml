@@ -21,10 +21,18 @@ jobs:
           password: ${{ secrets.SERVER_PASSWORD }}
           script: |
             cd /home/ubuntu/SyncTask
+            OLD_HEAD=$(git rev-parse HEAD)
             git pull origin main
-            source venv/bin/activate
-            pip install -r requirements.txt
-            sudo systemctl restart synctask.service
+            NEW_HEAD=$(git rev-parse HEAD)
+            
+            if git diff --name-only $OLD_HEAD $NEW_HEAD | grep -qE '\.py$|requirements\.txt'; then
+                echo "Python code or dependencies changed. Restarting service..."
+                source venv/bin/activate
+                pip install -r requirements.txt
+                sudo systemctl restart synctask.service
+            else
+                echo "Only static files or docs changed. Skipping service restart."
+            fi
 
       - name: Deployment Summary
         run: |
