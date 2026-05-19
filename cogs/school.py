@@ -5,8 +5,8 @@ import datetime
 import holidays
 from utils.logger import record_log
 from utils.formatter import get_schedule_message, parse_exam_dates, normalize_deadline, parse_deadline, truncate_discord_text, kst
-from utils.ui import EXAM_COLOR, REMINDER_COLOR, embed, ok, warn
-from core.neis_api import fetch_neis_timetable
+from utils.ui import EXAM_COLOR, REMINDER_COLOR, SCHEDULE_COLOR, embed, ok, warn
+from core.neis_api import fetch_neis_timetable, fetch_neis_school_schedule
 from cogs.admin import SUPER_ADMINS, is_manager_or_admin
 
 def next_school_day(start_date: datetime.datetime) -> datetime.datetime:
@@ -159,6 +159,51 @@ class SchoolCog(commands.Cog):
             msg += "\n"
             
         await interaction.response.send_message(msg.strip())
+
+    @app_commands.command(name="학사일정", description="이번 달 또는 특정 달의 학사일정을 확인합니다.")
+    @app_commands.describe(month="확인할 월 (1~12, 입력하지 않으면 이번 달)")
+    async def school_schedule(self, interaction: discord.Interaction, month: int = None):
+        await record_log(interaction, "학사일정", f"{month}월" if month else "이번달")
+        
+        # API 호출 시간이 걸릴 수 있으므로 미리 응답 대기 상태로 전환
+        await interaction.response.defer()
+
+        now = datetime.datetime.now(kst)
+        target_year = now.year
+        target_month = month if month else now.month
+
+        if target_month < 1 or target_month > 12:
+            return await interaction.followup.send(warn("월은 1에서 12 사이의 숫자로 입력해주세요."))
+
+        # 요청할 월의 1일부터 31일까지로 설정 (존재하지 않는 31일도 API가 알아서 월별로 잘라서 반환함)
+        start_date = f"{target_year}{target_month:02d}01"
+        end_date = f"{target_year}{target_month:02d}31"
+
+        schedule_data = await fetch_neis_school_schedule(start_date, end_date)
+
+        if schedule_data is None:
+            return await interaction.followup.send(warn("NEIS API 오류로 일정을 불러오지 못했습니다. API 키나 네트워크를 확인해주세요."))
+        
+        if not schedule_data:
+            empty_embed = embed(f"🏫 {target_year}년 {target_month}월 학사일정", "등록된 학교 행사가 없습니다.", color=SCHEDULE_COLOR)
+            return await interaction.followup.send(embed=empty_embed)
+
+        desc = ""
+        for start_date, end_date, event in schedule_data:
+            # 20260818 -> 8/18 형식으로 깔끔하게 변환
+            s_formatted = f"{int(start_date[4:6])}/{int(start_date[6:8])}"
+            if end_date:
+                e_formatted = f"{int(end_date[4:6])}/{int(end_date[6:8])}"
+                desc += f"**{s_formatted}~{e_formatted}** · {event}\n"
+            else:
+                desc += f"**{s_formatted}** · {event}\n"
+
+        schedule_embed = embed(
+            title=f"🏫 {target_year}년 {target_month}월 학사일정", 
+            description=desc.strip(), 
+            color=SCHEDULE_COLOR
+        )
+        await interaction.followup.send(embed=schedule_embed)
 
     @app_commands.command(name="알림설정", description="개인 DM 알림 구독 여부와 범위를 설정합니다.")
     @app_commands.choices(scope=[
