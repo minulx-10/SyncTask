@@ -30,6 +30,17 @@ def meal_target_date(target: str) -> datetime.datetime:
         return now + datetime.timedelta(days=1)
     return now
 
+def default_meal_selection(now: datetime.datetime | None = None) -> tuple[datetime.datetime, str]:
+    target_date = now or datetime.datetime.now(kst)
+    current = target_date.time()
+    if current <= datetime.time(hour=8, minute=10):
+        return target_date, "1"
+    if current <= datetime.time(hour=13, minute=30):
+        return target_date, "2"
+    if current <= datetime.time(hour=19, minute=30):
+        return target_date, "3"
+    return target_date + datetime.timedelta(days=1), "1"
+
 def format_meal_value(meal: dict | None, limit: int = 1000) -> str:
     if not meal:
         return "등록된 급식 정보가 없습니다."
@@ -111,8 +122,8 @@ class SchoolCog(commands.Cog):
         embed = await get_schedule_message(target_date, interaction.guild_id, self.bot.db, fetch_neis_timetable)
         await interaction.response.send_message(embed=embed)
 
-    @app_commands.command(name="급식", description="오늘 또는 내일 급식을 아침/점심/저녁별로 보여줍니다.")
-    @app_commands.describe(target="볼 날짜", meal="전체 또는 아침/점심/저녁 선택")
+    @app_commands.command(name="급식", description="급식을 보여줍니다. 옵션 없이 실행하면 현재 시간 기준 다음 급식을 보여줍니다.")
+    @app_commands.describe(target="볼 날짜. 선택하지 않으면 오늘", meal="전체 또는 아침/점심/저녁 선택")
     @app_commands.choices(
         target=[
             app_commands.Choice(name="오늘", value="오늘"),
@@ -127,12 +138,21 @@ class SchoolCog(commands.Cog):
     )
     async def meal(self, interaction: discord.Interaction, target: app_commands.Choice[str] = None, meal: app_commands.Choice[str] = None):
         target_value = target.value if target else "오늘"
-        meal_value = meal.value if meal else "전체"
-        meal_name = meal.name if meal else "전체"
+        if meal:
+            meal_value = meal.value
+            meal_name = meal.name
+        elif target:
+            meal_value = "전체"
+            meal_name = "전체"
+        else:
+            target_date, meal_value = default_meal_selection()
+            target_value = "내일" if target_date.date() > datetime.datetime.now(kst).date() else "오늘"
+            meal_name = f"자동-{MEAL_LABELS[meal_value]}"
         await record_log(interaction, "급식", f"날짜:[{target_value}] 식사:[{meal_name}]")
         await interaction.response.defer()
 
-        target_date = meal_target_date(target_value)
+        if meal or target:
+            target_date = meal_target_date(target_value)
         meal_data = await fetch_neis_meal(target_date.strftime("%Y%m%d"))
 
         if meal_data is None:
