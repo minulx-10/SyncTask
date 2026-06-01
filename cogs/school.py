@@ -6,11 +6,11 @@ import holidays
 from utils.logger import record_log
 from utils.formatter import get_schedule_message, parse_exam_dates, normalize_deadline, parse_deadline, truncate_discord_text, kst
 from utils.ui import (
-    EXAM_COLOR, REMINDER_COLOR, SCHEDULE_COLOR, SUCCESS_COLOR, DIVIDER,
+    EXAM_COLOR, REMINDER_COLOR, SCHEDULE_COLOR, SUCCESS_COLOR, TASK_COLOR, FOOTER_TEXT, DIVIDER,
     E_EXAM, E_SCHEDULE, E_REMINDER,
     embed, ok, warn,
 )
-from core.neis_api import fetch_neis_timetable, fetch_neis_school_schedule, fetch_neis_exam_dates
+from core.neis_api import fetch_neis_timetable, fetch_neis_meal, fetch_neis_school_schedule, fetch_neis_exam_dates
 from cogs.admin import SUPER_ADMINS, is_manager_or_admin
 
 def next_school_day(start_date: datetime.datetime) -> datetime.datetime:
@@ -19,6 +19,61 @@ def next_school_day(start_date: datetime.datetime) -> datetime.datetime:
     while target_date.weekday() >= 5 or target_date.date() in kr_holidays:
         target_date += datetime.timedelta(days=1)
     return target_date
+
+MEAL_LABELS = {"1": "아침", "2": "점심", "3": "저녁"}
+MEAL_EMOJIS = {"1": "🥣", "2": "🍱", "3": "🍖"}
+WEEKDAYS = ["월", "화", "수", "목", "금", "토", "일"]
+
+def meal_target_date(target: str) -> datetime.datetime:
+    now = datetime.datetime.now(kst)
+    if target == "내일":
+        return now + datetime.timedelta(days=1)
+    return now
+
+def format_meal_value(meal: dict | None, limit: int = 1000) -> str:
+    if not meal:
+        return "등록된 급식 정보가 없습니다."
+
+    dishes = meal.get("dishes") or []
+    if dishes:
+        text = "\n".join(f"• {dish}" for dish in dishes)
+    else:
+        text = "등록된 메뉴가 없습니다."
+
+    calorie = meal.get("calorie")
+    if calorie:
+        text += f"\n\n{calorie}"
+    return truncate_discord_text(text, limit)
+
+def build_meal_embed(target_date: datetime.datetime, meal_data: dict, meal_code: str) -> discord.Embed:
+    weekday = WEEKDAYS[target_date.weekday()]
+    date_label = f"{target_date.month}월 {target_date.day}일 ({weekday})"
+
+    if not meal_data:
+        item = embed(
+            title=f"🍽️  {date_label} 급식",
+            description="등록된 급식 정보가 없습니다.",
+            color=TASK_COLOR,
+        )
+    elif meal_code == "전체":
+        item = embed(title=f"🍽️  {date_label} 급식", color=TASK_COLOR)
+        for code in ("1", "2", "3"):
+            item.add_field(
+                name=f"{MEAL_EMOJIS[code]} {MEAL_LABELS[code]}",
+                value=format_meal_value(meal_data.get(code)),
+                inline=False,
+            )
+    else:
+        label = MEAL_LABELS[meal_code]
+        emoji = MEAL_EMOJIS[meal_code]
+        item = embed(
+            title=f"{emoji}  {label}",
+            description=format_meal_value(meal_data.get(meal_code), 3900),
+            color=TASK_COLOR,
+        )
+
+    item.set_footer(text=f"{target_date.strftime('%Y.%m.%d')} ({weekday}) · {FOOTER_TEXT}")
+    return item
 
 class SchoolCog(commands.Cog):
     def __init__(self, bot):
@@ -55,6 +110,36 @@ class SchoolCog(commands.Cog):
             
         embed = await get_schedule_message(target_date, interaction.guild_id, self.bot.db, fetch_neis_timetable)
         await interaction.response.send_message(embed=embed)
+
+    @app_commands.command(name="급식", description="오늘 또는 내일 급식을 아침/점심/저녁별로 보여줍니다.")
+    @app_commands.describe(target="볼 날짜", meal="전체 또는 아침/점심/저녁 선택")
+    @app_commands.choices(
+        target=[
+            app_commands.Choice(name="오늘", value="오늘"),
+            app_commands.Choice(name="내일", value="내일"),
+        ],
+        meal=[
+            app_commands.Choice(name="전체", value="전체"),
+            app_commands.Choice(name="아침", value="1"),
+            app_commands.Choice(name="점심", value="2"),
+            app_commands.Choice(name="저녁", value="3"),
+        ],
+    )
+    async def meal(self, interaction: discord.Interaction, target: app_commands.Choice[str] = None, meal: app_commands.Choice[str] = None):
+        target_value = target.value if target else "오늘"
+        meal_value = meal.value if meal else "전체"
+        meal_name = meal.name if meal else "전체"
+        await record_log(interaction, "급식", f"날짜:[{target_value}] 식사:[{meal_name}]")
+        await interaction.response.defer()
+
+        target_date = meal_target_date(target_value)
+        meal_data = await fetch_neis_meal(target_date.strftime("%Y%m%d"))
+
+        if meal_data is None:
+            return await interaction.followup.send(warn("NEIS API 오류로 급식을 불러오지 못했습니다."))
+
+        meal_embed = build_meal_embed(target_date, meal_data, meal_value)
+        await interaction.followup.send(embed=meal_embed)
 
     @app_commands.command(name="시험일정설정", description="중간/기말고사의 시작일과 종료일을 설정합니다.")
     @is_manager_or_admin()

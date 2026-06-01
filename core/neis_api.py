@@ -1,5 +1,7 @@
 import aiohttp
 import os
+import re
+from html import unescape
 
 async def fetch_neis_timetable(date_str: str, grade: str, class_nm: str) -> list:
     if not os.getenv("NEIS_API_KEY"):
@@ -31,6 +33,54 @@ async def fetch_neis_timetable(date_str: str, grade: str, class_nm: str) -> list
                                 timetable_dict[perio] = r["ITRT_CNTNT"]
                         return sorted(timetable_dict.items())
                     return []
+    except Exception:
+        return None
+    return None
+
+
+def _split_neis_text(value: str) -> list[str]:
+    text = unescape(value or "")
+    text = re.sub(r"<\s*br\s*/?\s*>", "\n", text, flags=re.IGNORECASE)
+    text = re.sub(r"<[^>]+>", "", text)
+    return [line.strip() for line in text.splitlines() if line.strip()]
+
+
+async def fetch_neis_meal(date_str: str) -> dict:
+    url = "https://open.neis.go.kr/hub/mealServiceDietInfo"
+    params = {
+        "Type": "json", "pIndex": 1, "pSize": 20,
+        "ATPT_OFCDC_SC_CODE": "F10", "SD_SCHUL_CODE": "7380292",
+        "MLSV_YMD": date_str,
+    }
+    api_key = os.getenv("NEIS_API_KEY")
+    if api_key:
+        params["KEY"] = api_key
+
+    try:
+        async with aiohttp.ClientSession() as session:
+            timeout = aiohttp.ClientTimeout(total=5)
+            async with session.get(url, params=params, timeout=timeout) as resp:
+                if resp.status == 200:
+                    try:
+                        data = await resp.json()
+                    except aiohttp.ContentTypeError:
+                        return None
+
+                    if "mealServiceDietInfo" not in data:
+                        return {}
+
+                    meals = {}
+                    rows = data["mealServiceDietInfo"][1]["row"]
+                    for row in rows:
+                        code = str(row.get("MMEAL_SC_CODE", "")).strip()
+                        if code not in {"1", "2", "3"}:
+                            continue
+                        meals[code] = {
+                            "name": row.get("MMEAL_SC_NM", ""),
+                            "dishes": _split_neis_text(row.get("DDISH_NM", "")),
+                            "calorie": row.get("CAL_INFO", "").strip(),
+                        }
+                    return meals
     except Exception:
         return None
     return None
