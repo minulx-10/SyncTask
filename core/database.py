@@ -27,6 +27,7 @@ async def init_db():
             reminder_enabled INTEGER DEFAULT 0,
             reminder_scope TEXT DEFAULT '전체',
             music_platform TEXT DEFAULT 'Apple Music',
+            music_last_song TEXT,
             PRIMARY KEY (guild_id, user_id)
         )
     ''')
@@ -34,6 +35,8 @@ async def init_db():
         user_setting_columns = [row[1] for row in await cursor.fetchall()]
     if "music_platform" not in user_setting_columns:
         await db.execute("ALTER TABLE user_settings ADD COLUMN music_platform TEXT DEFAULT 'Apple Music'")
+    if "music_last_song" not in user_setting_columns:
+        await db.execute("ALTER TABLE user_settings ADD COLUMN music_last_song TEXT")
     await db.execute('''
         CREATE TABLE IF NOT EXISTS change_logs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,

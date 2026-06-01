@@ -1,5 +1,4 @@
-import datetime
-import hashlib
+import random
 from urllib.parse import quote
 
 import aiohttp
@@ -8,7 +7,6 @@ from discord import app_commands
 from discord.ext import commands
 from discord.ui import Button, View
 
-from utils.formatter import kst
 from utils.logger import record_log
 from utils.ui import FOOTER_TEXT, SUCCESS_COLOR
 
@@ -52,11 +50,13 @@ PLATFORM_CHOICES = [
 ]
 
 
-def daily_song_seed(guild_id: int | None, user_id: int, target_date: datetime.date) -> tuple[str, str]:
-    key = f"{guild_id or 'dm'}:{user_id}:{target_date.isoformat()}"
-    digest = hashlib.sha256(key.encode("utf-8")).hexdigest()
-    index = int(digest, 16) % len(SONG_POOL)
-    return SONG_POOL[index]
+def song_key(title: str, artist: str) -> str:
+    return f"{artist}::{title}"
+
+
+def random_song(previous_key: str | None = None) -> tuple[str, str]:
+    candidates = [song for song in SONG_POOL if song_key(song[0], song[1]) != previous_key]
+    return random.choice(candidates or SONG_POOL)
 
 
 def format_duration(milliseconds: int | None) -> str:
@@ -141,7 +141,7 @@ def build_onochu_embed(seed_title: str, seed_artist: str, track: dict | None, pl
     artwork_url = bigger_artwork_url((track or {}).get("artworkUrl100"))
     if artwork_url:
         item.set_thumbnail(url=artwork_url)
-    item.set_footer(text=f"개인 오늘의 노래 추천 · {FOOTER_TEXT}")
+    item.set_footer(text=f"랜덤 노래 추천 · {FOOTER_TEXT}")
     return item
 
 
@@ -178,9 +178,31 @@ class MusicCog(commands.Cog):
         )
         await self.bot.db.commit()
 
+    async def get_last_song_key(self, guild_id: int, user_id: int) -> str | None:
+        async with self.bot.db.execute(
+            "SELECT music_last_song FROM user_settings WHERE guild_id=? AND user_id=?",
+            (guild_id, user_id),
+        ) as cursor:
+            row = await cursor.fetchone()
+        return row[0] if row else None
+
+    async def set_last_song_key(self, guild_id: int, user_id: int, last_song: str):
+        await self.bot.db.execute(
+            """
+            INSERT INTO user_settings (guild_id, user_id, music_last_song)
+            VALUES (?, ?, ?)
+            ON CONFLICT(guild_id, user_id)
+            DO UPDATE SET music_last_song=excluded.music_last_song
+            """,
+            (guild_id, user_id, last_song),
+        )
+        await self.bot.db.commit()
+
     async def send_onochu(self, interaction: discord.Interaction, platform: str):
-        target_date = datetime.datetime.now(kst).date()
-        seed_title, seed_artist = daily_song_seed(interaction.guild_id, interaction.user.id, target_date)
+        guild_id = interaction.guild_id or 0
+        previous_key = await self.get_last_song_key(guild_id, interaction.user.id)
+        seed_title, seed_artist = random_song(previous_key)
+        await self.set_last_song_key(guild_id, interaction.user.id, song_key(seed_title, seed_artist))
         track = await fetch_itunes_track(seed_title, seed_artist)
 
         title = (track or {}).get("trackName") or seed_title
@@ -192,7 +214,7 @@ class MusicCog(commands.Cog):
             view=MusicLinkView(links, platform),
         )
 
-    @app_commands.command(name="오노추", description="오늘의 노래를 추천합니다. 저장된 음악 플랫폼을 우선 표시합니다.")
+    @app_commands.command(name="오노추", description="랜덤으로 노래를 추천합니다. 저장된 음악 플랫폼을 우선 표시합니다.")
     @app_commands.describe(platform="사용할 음악 플랫폼. 선택하면 다음부터 기본값으로 저장됩니다.")
     @app_commands.choices(platform=PLATFORM_CHOICES)
     async def onochu(self, interaction: discord.Interaction, platform: app_commands.Choice[str] = None):
