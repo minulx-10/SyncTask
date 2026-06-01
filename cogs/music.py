@@ -52,8 +52,8 @@ PLATFORM_CHOICES = [
 ]
 
 
-def daily_song_seed(guild_id: int | None, target_date: datetime.date) -> tuple[str, str]:
-    key = f"{guild_id or 'dm'}:{target_date.isoformat()}"
+def daily_song_seed(guild_id: int | None, user_id: int, target_date: datetime.date) -> tuple[str, str]:
+    key = f"{guild_id or 'dm'}:{user_id}:{target_date.isoformat()}"
     digest = hashlib.sha256(key.encode("utf-8")).hexdigest()
     index = int(digest, 16) % len(SONG_POOL)
     return SONG_POOL[index]
@@ -141,7 +141,7 @@ def build_onochu_embed(seed_title: str, seed_artist: str, track: dict | None, pl
     artwork_url = bigger_artwork_url((track or {}).get("artworkUrl100"))
     if artwork_url:
         item.set_thumbnail(url=artwork_url)
-    item.set_footer(text=f"오늘의 노래 추천 · {FOOTER_TEXT}")
+    item.set_footer(text=f"개인 오늘의 노래 추천 · {FOOTER_TEXT}")
     return item
 
 
@@ -180,7 +180,7 @@ class MusicCog(commands.Cog):
 
     async def send_onochu(self, interaction: discord.Interaction, platform: str):
         target_date = datetime.datetime.now(kst).date()
-        seed_title, seed_artist = daily_song_seed(interaction.guild_id, target_date)
+        seed_title, seed_artist = daily_song_seed(interaction.guild_id, interaction.user.id, target_date)
         track = await fetch_itunes_track(seed_title, seed_artist)
 
         title = (track or {}).get("trackName") or seed_title
