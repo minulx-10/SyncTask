@@ -98,7 +98,7 @@ class AdminCog(commands.Cog):
         help_embed = embed(f"{E_HELP}  SyncTask 도움말", color=SETUP_COLOR)
         help_embed.add_field(
             name="📋 조회",
-            value="`/오늘` `/내일` `/시간표` `/학사일정`\n`/전체일정` `/숙제` `/수행평가` `/시험범위` `/주간요약`",
+            value="`/오늘` `/내일` `/시간표` `/급식` `/학사일정`\n`/전체일정` `/숙제` `/수행평가` `/시험범위` `/주간요약` `/오노추`",
             inline=False,
         )
         help_embed.add_field(
@@ -118,7 +118,7 @@ class AdminCog(commands.Cog):
         )
         help_embed.add_field(
             name="🔔 개인",
-            value="`/알림설정`으로 DM 알림을 관리합니다.",
+            value="`/알림설정`으로 DM 알림을 관리합니다.\n`/오노추설정`으로 음악 플랫폼을 저장합니다.",
             inline=False,
         )
         await interaction.response.send_message(embed=help_embed, ephemeral=True)

@@ -383,8 +383,12 @@ class SchoolCog(commands.Cog):
         selected_scope = scope.value if scope else "전체"
         await self.bot.db.execute(
             """
-            REPLACE INTO user_settings (guild_id, user_id, reminder_enabled, reminder_scope)
+            INSERT INTO user_settings (guild_id, user_id, reminder_enabled, reminder_scope)
             VALUES (?, ?, ?, ?)
+            ON CONFLICT(guild_id, user_id)
+            DO UPDATE SET
+                reminder_enabled=excluded.reminder_enabled,
+                reminder_scope=excluded.reminder_scope
             """,
             (interaction.guild_id, interaction.user.id, 1 if enabled else 0, selected_scope),
         )
