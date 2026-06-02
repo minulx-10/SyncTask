@@ -1,4 +1,7 @@
+import asyncio
 import random
+import re
+from html import unescape
 from urllib.parse import quote
 
 import aiohttp
@@ -49,6 +52,11 @@ PLATFORM_CHOICES = [
     app_commands.Choice(name="YouTube Music", value="youtube"),
 ]
 
+HTTP_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124 Safari/537.36",
+    "Accept-Language": "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7",
+}
+
 
 def song_key(title: str, artist: str) -> str:
     return f"{artist}::{title}"
@@ -67,69 +75,271 @@ def format_duration(milliseconds: int | None) -> str:
     return f"{minutes}:{seconds:02d}"
 
 
+def clean_text(value: str | None) -> str:
+    text = unescape(value or "")
+    text = re.sub(r"<[^>]+>", "", text)
+    text = text.replace("\xa0", " ")
+    return re.sub(r"\s+", " ", text).strip()
+
+
 def bigger_artwork_url(url: str | None) -> str | None:
     if not url:
         return None
     return url.replace("100x100bb", "600x600bb").replace("100x100", "600x600")
 
 
-def platform_links(title: str, artist: str, apple_url: str | None = None) -> dict[str, str]:
-    query = f"{artist} {title}".strip()
-    encoded = quote(query)
-    return {
-        "Apple Music": apple_url or f"https://music.apple.com/search?term={encoded}",
-        "Spotify": f"https://open.spotify.com/search/{encoded}",
-        "Melon": f"https://www.melon.com/search/total/index.htm?q={encoded}",
-        "Bugs": f"https://music.bugs.co.kr/search/integrated?q={encoded}",
-        "YouTube Music": f"https://music.youtube.com/search?q={encoded}",
-    }
-
-
 def platform_label(platform_key: str | None) -> str:
     return PLATFORMS.get(platform_key or "", "Apple Music")
 
 
-async def fetch_itunes_track(title: str, artist: str) -> dict | None:
-    params = {
-        "term": f"{artist} {title}",
-        "country": "KR",
-        "media": "music",
-        "entity": "song",
-        "limit": 5,
-    }
-    timeout = aiohttp.ClientTimeout(total=5)
-    try:
-        async with aiohttp.ClientSession(timeout=timeout) as session:
-            async with session.get("https://itunes.apple.com/search", params=params) as resp:
-                if resp.status != 200:
-                    return None
-                data = await resp.json(content_type=None)
-    except Exception:
-        return None
+def search_query(title: str, artist: str) -> str:
+    return f"{artist} {title}".strip()
 
-    results = data.get("results") or []
+
+async def fetch_text(session: aiohttp.ClientSession, url: str, **kwargs) -> str | None:
+    for _ in range(2):
+        try:
+            async with session.get(url, **kwargs) as resp:
+                if resp.status == 200:
+                    return await resp.text()
+        except Exception:
+            pass
+        await asyncio.sleep(0.2)
+    return None
+
+
+async def fetch_json(session: aiohttp.ClientSession, url: str, **kwargs) -> dict | None:
+    for _ in range(2):
+        try:
+            async with session.get(url, **kwargs) as resp:
+                if resp.status == 200:
+                    return await resp.json(content_type=None)
+        except Exception:
+            pass
+        await asyncio.sleep(0.2)
+    return None
+
+
+def first_match(pattern: str, text: str) -> str | None:
+    match = re.search(pattern, text, re.DOTALL)
+    return clean_text(match.group(1)) if match else None
+
+
+def split_title_artist(value: str, separator: str, fallback_title: str, fallback_artist: str) -> tuple[str, str]:
+    if separator in value:
+        title, artist = value.split(separator, 1)
+        return clean_text(title), clean_text(artist)
+    return fallback_title, fallback_artist
+
+
+async def resolve_apple_track(session: aiohttp.ClientSession, title: str, artist: str) -> dict | None:
+    data = await fetch_json(
+        session,
+        "https://itunes.apple.com/search",
+        params={
+            "term": search_query(title, artist),
+            "country": "KR",
+            "media": "music",
+            "entity": "song",
+            "limit": 5,
+        },
+    )
+    results = (data or {}).get("results") or []
     if not results:
         return None
 
     title_lower = title.lower()
     artist_lower = artist.lower()
+    track = results[0]
     for item in results:
         if title_lower in item.get("trackName", "").lower() and artist_lower in item.get("artistName", "").lower():
-            return item
-    return results[0]
+            track = item
+            break
+
+    return {
+        "platform": "apple",
+        "url": track.get("trackViewUrl"),
+        "title": track.get("trackName") or title,
+        "artist": track.get("artistName") or artist,
+        "album": track.get("collectionName"),
+        "genre": track.get("primaryGenreName"),
+        "duration": format_duration(track.get("trackTimeMillis")),
+        "artwork_url": bigger_artwork_url(track.get("artworkUrl100")),
+    }
 
 
-def build_onochu_embed(seed_title: str, seed_artist: str, track: dict | None, platform: str, links: dict[str, str]) -> discord.Embed:
-    title = (track or {}).get("trackName") or seed_title
-    artist = (track or {}).get("artistName") or seed_artist
-    album = (track or {}).get("collectionName") or "앨범 정보 없음"
-    genre = (track or {}).get("primaryGenreName") or "genre unknown"
-    duration = format_duration((track or {}).get("trackTimeMillis"))
-    preferred_label = platform_label(platform)
+async def resolve_spotify_track(session: aiohttp.ClientSession, title: str, artist: str) -> dict | None:
+    encoded_query = quote(search_query(title, artist))
+    data = await fetch_text(session, f"https://r.jina.ai/http://r.jina.ai/http://https://open.spotify.com/search/{encoded_query}")
+    if not data:
+        return None
+
+    url = first_match(r"\[.*?\]\((https://open\.spotify\.com/track/[A-Za-z0-9]+)\)", data)
+    if not url:
+        return None
+
+    duration = first_match(rf"\({re.escape(url)}\)\s*\n\[.*?\]\(https://open\.spotify\.com/artist/[A-Za-z0-9]+\)\s*\n\n(\d+:\d+)", data)
+    meta = await fetch_json(session, "https://open.spotify.com/oembed", params={"url": url}) or {}
+    return {
+        "platform": "spotify",
+        "url": url,
+        "title": meta.get("title") or title,
+        "artist": artist,
+        "album": None,
+        "genre": None,
+        "duration": duration,
+        "artwork_url": meta.get("thumbnail_url"),
+    }
+
+
+async def resolve_melon_track(session: aiohttp.ClientSession, title: str, artist: str) -> dict | None:
+    data = await fetch_text(
+        session,
+        "https://www.melon.com/search/song/index.htm",
+        params={"q": search_query(title, artist), "section": "", "searchGnbYn": "Y", "kkoSpl": "N", "kkoDpType": ""},
+    )
+    song_id = first_match(r'data-song-no="(\d+)"', data or "")
+    if not song_id:
+        return None
+
+    url = f"https://www.melon.com/song/detail.htm?songId={song_id}"
+    detail = await fetch_text(session, url) or ""
+    og_title = first_match(r'<meta property="og:title" content="([^"]+)"', detail)
+    artwork_url = first_match(r'<meta property="og:image" content="([^"]+)"', detail)
+    resolved_title, resolved_artist = split_title_artist(og_title or "", " - ", title, artist)
+    album = first_match(r'<dt>앨범</dt>\s*<dd>.*?<a[^>]*>(.*?)</a>', detail)
+
+    return {
+        "platform": "melon",
+        "url": url,
+        "title": resolved_title,
+        "artist": resolved_artist,
+        "album": album,
+        "genre": "Melon",
+        "duration": None,
+        "artwork_url": artwork_url,
+    }
+
+
+async def resolve_bugs_track(session: aiohttp.ClientSession, title: str, artist: str) -> dict | None:
+    data = await fetch_text(
+        session,
+        "https://music.bugs.co.kr/search/track",
+        params={"q": search_query(title, artist)},
+    )
+    url = first_match(r'href="(https://music\.bugs\.co\.kr/track/\d+[^"]*)"', data or "")
+    if not url:
+        return None
+    url = url.split("?")[0]
+
+    detail = await fetch_text(session, url) or ""
+    og_title = first_match(r'<meta property="og:title" content="([^"]+)"', detail)
+    artwork_url = first_match(r'<meta property="og:image" content="([^"]+)"', detail)
+    resolved_title, resolved_artist = split_title_artist(og_title or "", " / ", title, artist)
+    album = first_match(r'<th scope="row">앨범</th>\s*<td>.*?<a[^>]*>(.*?)</a>', detail)
+
+    return {
+        "platform": "bugs",
+        "url": url,
+        "title": resolved_title,
+        "artist": resolved_artist,
+        "album": album,
+        "genre": "Bugs",
+        "duration": None,
+        "artwork_url": artwork_url,
+    }
+
+
+async def resolve_youtube_track(session: aiohttp.ClientSession, title: str, artist: str) -> dict | None:
+    data = await fetch_text(
+        session,
+        "https://www.youtube.com/results",
+        params={"search_query": f"{search_query(title, artist)} official audio"},
+    )
+    video_ids = []
+    for video_id in re.findall(r'"videoId":"([\w-]{11})"', data or ""):
+        if video_id not in video_ids:
+            video_ids.append(video_id)
+    if not video_ids:
+        return None
+
+    video_id = video_ids[0]
+    watch_url = f"https://www.youtube.com/watch?v={video_id}"
+    music_url = f"https://music.youtube.com/watch?v={video_id}"
+    meta = await fetch_json(session, "https://www.youtube.com/oembed", params={"url": watch_url, "format": "json"}) or {}
+
+    return {
+        "platform": "youtube",
+        "url": music_url,
+        "title": meta.get("title") or title,
+        "artist": meta.get("author_name") or artist,
+        "album": None,
+        "genre": "YouTube Music",
+        "duration": None,
+        "artwork_url": meta.get("thumbnail_url"),
+    }
+
+
+async def resolve_platform_track(
+    session: aiohttp.ClientSession,
+    platform: str,
+    title: str,
+    artist: str,
+) -> dict | None:
+    resolvers = {
+        "apple": resolve_apple_track,
+        "spotify": resolve_spotify_track,
+        "melon": resolve_melon_track,
+        "bugs": resolve_bugs_track,
+        "youtube": resolve_youtube_track,
+    }
+    resolver = resolvers.get(platform)
+    result = await resolver(session, title, artist) if resolver else None
+    if result and result.get("url"):
+        return result
+    return None
+
+
+async def resolve_music_links(title: str, artist: str, preferred_platform: str) -> tuple[dict, dict[str, dict]]:
+    timeout = aiohttp.ClientTimeout(total=10)
+    async with aiohttp.ClientSession(headers=HTTP_HEADERS, timeout=timeout) as session:
+        preferred = await resolve_platform_track(session, preferred_platform, title, artist)
+        tasks = {
+            key: resolve_platform_track(session, key, title, artist)
+            for key in PLATFORMS
+            if key != preferred_platform
+        }
+        resolved = await asyncio.gather(*tasks.values(), return_exceptions=True)
+
+    if not preferred:
+        preferred = {
+            "platform": preferred_platform,
+            "url": None,
+            "title": title,
+            "artist": artist,
+            "album": None,
+            "genre": f"{platform_label(preferred_platform)} 직접 링크 없음",
+            "duration": None,
+            "artwork_url": None,
+        }
+
+    results = {preferred_platform: preferred} if preferred.get("url") else {}
+    for key, result in zip(tasks.keys(), resolved):
+        if isinstance(result, dict) and result.get("url"):
+            results[key] = result
+    return preferred, results
+
+
+def build_onochu_embed(seed_title: str, seed_artist: str, preferred: dict, platform: str) -> discord.Embed:
+    title = preferred.get("title") or seed_title
+    artist = preferred.get("artist") or seed_artist
+    album = preferred.get("album") or "앨범 정보 없음"
+    genre = preferred.get("genre") or platform_label(platform)
+    duration = preferred.get("duration") or "-"
 
     item = discord.Embed(
         title=title,
-        url=links.get(preferred_label),
+        url=preferred.get("url"),
         description=(
             f"**{artist}**\n"
             f"앨범: {album}\n\n"
@@ -138,7 +348,7 @@ def build_onochu_embed(seed_title: str, seed_artist: str, track: dict | None, pl
         ),
         color=SUCCESS_COLOR,
     )
-    artwork_url = bigger_artwork_url((track or {}).get("artworkUrl100"))
+    artwork_url = preferred.get("artwork_url")
     if artwork_url:
         item.set_thumbnail(url=artwork_url)
     item.set_footer(text=f"랜덤 노래 추천 · {FOOTER_TEXT}")
@@ -146,12 +356,13 @@ def build_onochu_embed(seed_title: str, seed_artist: str, track: dict | None, pl
 
 
 class MusicLinkView(View):
-    def __init__(self, links: dict[str, str], preferred_platform: str):
+    def __init__(self, links: dict[str, dict], preferred_platform: str):
         super().__init__(timeout=180)
-        preferred_label = platform_label(preferred_platform)
-        ordered_labels = [preferred_label] + [label for label in links if label != preferred_label]
-        for label in ordered_labels:
-            self.add_item(Button(label=label, style=discord.ButtonStyle.link, url=links[label]))
+        ordered_keys = [preferred_platform] + [key for key in PLATFORMS if key != preferred_platform]
+        for key in ordered_keys:
+            item = links.get(key)
+            if item and item.get("url"):
+                self.add_item(Button(label=platform_label(key), style=discord.ButtonStyle.link, url=item["url"]))
 
 
 class MusicCog(commands.Cog):
@@ -203,14 +414,11 @@ class MusicCog(commands.Cog):
         previous_key = await self.get_last_song_key(guild_id, interaction.user.id)
         seed_title, seed_artist = random_song(previous_key)
         await self.set_last_song_key(guild_id, interaction.user.id, song_key(seed_title, seed_artist))
-        track = await fetch_itunes_track(seed_title, seed_artist)
 
-        title = (track or {}).get("trackName") or seed_title
-        artist = (track or {}).get("artistName") or seed_artist
-        links = platform_links(title, artist, (track or {}).get("trackViewUrl"))
+        preferred, links = await resolve_music_links(seed_title, seed_artist, platform)
 
         await interaction.followup.send(
-            embed=build_onochu_embed(seed_title, seed_artist, track, platform, links),
+            embed=build_onochu_embed(seed_title, seed_artist, preferred, platform),
             view=MusicLinkView(links, platform),
         )
 
