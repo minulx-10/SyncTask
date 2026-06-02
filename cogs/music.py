@@ -1,6 +1,7 @@
 import asyncio
 import random
 import re
+import time
 from html import unescape
 from urllib.parse import quote
 
@@ -12,29 +13,6 @@ from discord.ui import Button, View
 
 from utils.logger import record_log
 from utils.ui import FOOTER_TEXT, SUCCESS_COLOR
-
-SONG_POOL = [
-    ("Ditto", "NewJeans"),
-    ("Hype Boy", "NewJeans"),
-    ("Supernova", "aespa"),
-    ("I AM", "IVE"),
-    ("Dynamite", "BTS"),
-    ("Pink Venom", "BLACKPINK"),
-    ("EASY", "LE SSERAFIM"),
-    ("MAESTRO", "SEVENTEEN"),
-    ("Love wins all", "IU"),
-    ("Love Lee", "AKMU"),
-    ("Welcome to the Show", "DAY6"),
-    ("INVU", "TAEYEON"),
-    ("Mantra", "JENNIE"),
-    ("APT", "ROSE"),
-    ("Viva La Vida", "Coldplay"),
-    ("Bohemian Rhapsody", "Queen"),
-    ("NIGHT DANCER", "imase"),
-    ("Lemon", "Kenshi Yonezu"),
-    ("Idol", "YOASOBI"),
-    ("STAY", "The Kid LAROI Justin Bieber"),
-]
 
 PLATFORMS = {
     "apple": "Apple Music",
@@ -56,15 +34,22 @@ HTTP_HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124 Safari/537.36",
     "Accept-Language": "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7",
 }
+CHART_CACHE_TTL = 900
+CHART_CACHE: dict[str, tuple[float, list[dict]]] = {}
 
 
 def song_key(title: str, artist: str) -> str:
     return f"{artist}::{title}"
 
 
-def random_song(previous_key: str | None = None) -> tuple[str, str]:
-    candidates = [song for song in SONG_POOL if song_key(song[0], song[1]) != previous_key]
-    return random.choice(candidates or SONG_POOL)
+def pick_random_candidate(candidates: list[dict], previous_key: str | None = None) -> dict | None:
+    available = [
+        item for item in candidates
+        if item.get("title") and item.get("artist") and song_key(item["title"], item["artist"]) != previous_key
+    ]
+    if not available:
+        available = [item for item in candidates if item.get("title") and item.get("artist")]
+    return random.choice(available) if available else None
 
 
 def format_duration(milliseconds: int | None) -> str:
@@ -130,6 +115,158 @@ def split_title_artist(value: str, separator: str, fallback_title: str, fallback
         title, artist = value.split(separator, 1)
         return clean_text(title), clean_text(artist)
     return fallback_title, fallback_artist
+
+
+def chart_cache_key(platform: str) -> str:
+    if platform in {"apple", "spotify", "melon", "bugs"}:
+        return platform
+    return "apple"
+
+
+async def fetch_apple_chart(session: aiohttp.ClientSession) -> list[dict]:
+    data = await fetch_json(session, "https://rss.applemarketingtools.com/api/v2/kr/music/most-played/100/songs.json")
+    results = ((data or {}).get("feed") or {}).get("results") or []
+    songs = []
+    for item in results:
+        title = clean_text(item.get("name"))
+        artist = clean_text(item.get("artistName"))
+        if not title or not artist:
+            continue
+        genres = item.get("genres") or []
+        genre = clean_text((genres[0] or {}).get("name")) if genres else "Apple Music"
+        songs.append({
+            "platform": "apple",
+            "title": title,
+            "artist": artist,
+            "album": clean_text(item.get("collectionName")),
+            "genre": genre,
+            "duration": None,
+            "url": item.get("url"),
+            "artwork_url": bigger_artwork_url(item.get("artworkUrl100")),
+        })
+    return songs
+
+
+async def fetch_melon_chart(session: aiohttp.ClientSession) -> list[dict]:
+    data = await fetch_text(session, "https://www.melon.com/chart/index.htm")
+    rows = re.findall(r'<tr[^>]+data-song-no="(\d+)"[^>]*>(.*?)</tr>', data or "", re.DOTALL)
+    songs = []
+    seen = set()
+    for song_id, row in rows:
+        if song_id in seen:
+            continue
+        seen.add(song_id)
+        title = first_match(r'<div class="ellipsis rank01">.*?<a[^>]+title="([^"]+) 재생"', row)
+        artist = first_match(r'<div class="ellipsis rank02">.*?<a[^>]+title="([^"]+) - 페이지 이동"', row)
+        album = first_match(r'<div class="ellipsis rank03">.*?<a[^>]+title="([^"]+) - 페이지 이동"', row)
+        artwork_url = first_match(r'<img[^>]+src="([^"]+)"', row)
+        if title and artist:
+            songs.append({
+                "platform": "melon",
+                "title": title,
+                "artist": artist,
+                "album": album,
+                "genre": "Melon TOP100",
+                "duration": None,
+                "url": f"https://www.melon.com/song/detail.htm?songId={song_id}",
+                "artwork_url": artwork_url,
+            })
+    return songs
+
+
+async def fetch_bugs_chart(session: aiohttp.ClientSession) -> list[dict]:
+    data = await fetch_text(session, "https://music.bugs.co.kr/chart/track/day/total")
+    rows = re.findall(r"<tr[^>]*>(.*?)</tr>", data or "", re.DOTALL)
+    songs = []
+    seen = set()
+    for row in rows:
+        url = first_match(r'href="(https://music\.bugs\.co\.kr/track/\d+[^"]*)"', row)
+        if not url:
+            continue
+        url = url.split("?")[0]
+        if url in seen:
+            continue
+        seen.add(url)
+        title = first_match(r'<p class="title"[^>]*>.*?title="([^"]+)"', row)
+        artist = first_match(r'<p class="artist">.*?title="([^"]+)"', row)
+        album = first_match(r'class="album" title="([^"]+)"', row)
+        artwork_url = first_match(r'<img[^>]+src="([^"]+)"', row)
+        if title and artist:
+            songs.append({
+                "platform": "bugs",
+                "title": title,
+                "artist": artist,
+                "album": album,
+                "genre": "Bugs Chart",
+                "duration": None,
+                "url": url,
+                "artwork_url": artwork_url,
+            })
+    return songs
+
+
+async def fetch_spotify_chart(session: aiohttp.ClientSession) -> list[dict]:
+    data = await fetch_text(session, "https://kworb.net/spotify/country/kr_daily.html")
+    rows = re.findall(r'<td class="text mp">(.*?)</td>', data or "", re.DOTALL)
+    songs = []
+    seen = set()
+    for row in rows:
+        track_id = first_match(r'\.\./track/([A-Za-z0-9]+)\.html', row)
+        text = clean_text(row)
+        if " - " not in text:
+            continue
+        artist, title = text.split(" - ", 1)
+        title = re.sub(r"\s*\(w/.*?\)\s*$", "", title).strip()
+        artist = clean_text(artist)
+        title = clean_text(title)
+        if not track_id or not title or not artist or track_id in seen:
+            continue
+        seen.add(track_id)
+        songs.append({
+            "platform": "spotify",
+            "title": title,
+            "artist": artist,
+            "album": None,
+            "genre": "Spotify Chart",
+            "duration": None,
+            "url": f"https://open.spotify.com/track/{track_id}",
+            "artwork_url": None,
+        })
+    return songs
+
+
+async def fetch_chart_candidates(platform: str) -> list[dict]:
+    key = chart_cache_key(platform)
+    cached = CHART_CACHE.get(key)
+    now = time.monotonic()
+    if cached and now - cached[0] < CHART_CACHE_TTL:
+        return cached[1]
+
+    timeout = aiohttp.ClientTimeout(total=12)
+    async with aiohttp.ClientSession(headers=HTTP_HEADERS, timeout=timeout) as session:
+        if key == "spotify":
+            songs = await fetch_spotify_chart(session)
+        elif key == "melon":
+            songs = await fetch_melon_chart(session)
+        elif key == "bugs":
+            songs = await fetch_bugs_chart(session)
+        else:
+            songs = await fetch_apple_chart(session)
+
+    if songs:
+        CHART_CACHE[key] = (now, songs)
+    return songs
+
+
+async def random_chart_song(platform: str, previous_key: str | None = None) -> dict | None:
+    candidates = await fetch_chart_candidates(platform)
+    item = pick_random_candidate(candidates, previous_key)
+    if item:
+        return item
+    if platform != "apple":
+        candidates = await fetch_chart_candidates("apple")
+        return pick_random_candidate(candidates, previous_key)
+    return None
 
 
 async def resolve_apple_track(session: aiohttp.ClientSession, title: str, artist: str) -> dict | None:
@@ -300,10 +437,26 @@ async def resolve_platform_track(
     return None
 
 
-async def resolve_music_links(title: str, artist: str, preferred_platform: str) -> tuple[dict, dict[str, dict]]:
+async def resolve_music_links(
+    title: str,
+    artist: str,
+    preferred_platform: str,
+    source_candidate: dict | None = None,
+) -> tuple[dict, dict[str, dict]]:
     timeout = aiohttp.ClientTimeout(total=10)
     async with aiohttp.ClientSession(headers=HTTP_HEADERS, timeout=timeout) as session:
-        preferred = await resolve_platform_track(session, preferred_platform, title, artist)
+        if (
+            source_candidate
+            and source_candidate.get("platform") == preferred_platform
+            and source_candidate.get("url")
+        ):
+            preferred = dict(source_candidate)
+            if preferred_platform == "spotify" and not preferred.get("artwork_url"):
+                meta = await fetch_json(session, "https://open.spotify.com/oembed", params={"url": preferred["url"]}) or {}
+                preferred["title"] = meta.get("title") or preferred.get("title")
+                preferred["artwork_url"] = meta.get("thumbnail_url")
+        else:
+            preferred = await resolve_platform_track(session, preferred_platform, title, artist)
         tasks = {
             key: resolve_platform_track(session, key, title, artist)
             for key in PLATFORMS
@@ -412,10 +565,16 @@ class MusicCog(commands.Cog):
     async def send_onochu(self, interaction: discord.Interaction, platform: str):
         guild_id = interaction.guild_id or 0
         previous_key = await self.get_last_song_key(guild_id, interaction.user.id)
-        seed_title, seed_artist = random_song(previous_key)
+        source_song = await random_chart_song(platform, previous_key)
+        if not source_song:
+            await interaction.followup.send("⚠️ 랜덤 곡 후보를 가져오지 못했습니다. 잠시 후 다시 시도해주세요.")
+            return
+
+        seed_title = source_song["title"]
+        seed_artist = source_song["artist"]
         await self.set_last_song_key(guild_id, interaction.user.id, song_key(seed_title, seed_artist))
 
-        preferred, links = await resolve_music_links(seed_title, seed_artist, platform)
+        preferred, links = await resolve_music_links(seed_title, seed_artist, platform, source_song)
 
         await interaction.followup.send(
             embed=build_onochu_embed(seed_title, seed_artist, preferred, platform),
