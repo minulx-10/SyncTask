@@ -123,11 +123,12 @@ class SchoolCog(commands.Cog):
         await interaction.response.send_message(embed=embed)
 
     @app_commands.command(name="급식", description="급식을 보여줍니다. 옵션 없이 실행하면 현재 시간 기준 다음 급식을 보여줍니다.")
-    @app_commands.describe(target="볼 날짜. 선택하지 않으면 오늘", meal="전체 또는 아침/점심/저녁 선택")
+    @app_commands.describe(target="볼 날짜. '전체'는 오늘 아침/점심/저녁을 한 번에 표시. 선택하지 않으면 오늘", meal="전체 또는 아침/점심/저녁 선택")
     @app_commands.choices(
         target=[
             app_commands.Choice(name="오늘", value="오늘"),
             app_commands.Choice(name="내일", value="내일"),
+            app_commands.Choice(name="전체", value="전체"),
         ],
         meal=[
             app_commands.Choice(name="전체", value="전체"),
@@ -138,6 +139,9 @@ class SchoolCog(commands.Cog):
     )
     async def meal(self, interaction: discord.Interaction, target: app_commands.Choice[str] = None, meal: app_commands.Choice[str] = None):
         target_value = target.value if target else "오늘"
+        # '전체' 타겟은 날짜가 아니라 '오늘 모든 끼니'를 의미 → 오늘 날짜로 매핑하고 아래 전체 분기를 타게 함
+        if target_value == "전체":
+            target_value = "오늘"
         if meal:
             meal_value = meal.value
             meal_name = meal.name
