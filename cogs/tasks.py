@@ -9,7 +9,7 @@ from utils.ui import (
     DASHBOARD_COLOR, HISTORY_COLOR, SUCCESS_COLOR, ERROR_COLOR,
     MUTED_COLOR, TASK_COLOR, DIVIDER,
     E_DASHBOARD, E_HISTORY, E_TASK, E_OK,
-    embed, ok, warn, deny,
+    embed, brand_footer, ok, warn, deny,
 )
 from cogs.admin import SUPER_ADMINS
 
@@ -51,7 +51,7 @@ class TaskReviewView(View):
         e = interaction.message.embeds[0]
         e.title = f"{E_OK} 일정 요청 승인"
         e.color = SUCCESS_COLOR
-        e.set_footer(text=f"승인자: {interaction.user.name}")
+        brand_footer(e, f"승인자: {interaction.user.name}")
         await interaction.response.edit_message(embed=e, view=None)
         
         try:
@@ -68,7 +68,7 @@ class TaskReviewView(View):
         e = interaction.message.embeds[0]
         e.title = "❌ 일정 요청 거절"
         e.color = ERROR_COLOR
-        e.set_footer(text=f"거절자: {interaction.user.name}")
+        brand_footer(e, f"거절자: {interaction.user.name}")
         await interaction.response.edit_message(embed=e, view=None)
 
 class DashboardView(View):
@@ -165,12 +165,13 @@ class TasksCog(commands.Cog):
                 if channel:
                     try:
                         msg = await channel.fetch_message(int(msg_row[0]))
-                        dash_embed = discord.Embed(
+                        dash_embed = embed(
                             title=f"{E_DASHBOARD}  학급 일정 대시보드",
                             description=embed_desc,
                             color=DASHBOARD_COLOR,
+                            author="실시간 대시보드",
                         )
-                        dash_embed.set_footer(text=f"마지막 업데이트: {now.strftime('%m/%d %H:%M')} · {DIVIDER}")
+                        brand_footer(dash_embed, f"마지막 업데이트: {now.strftime('%m/%d %H:%M')} · {DIVIDER}")
                         await msg.edit(embed=dash_embed, view=DashboardView(self.bot))
                     except discord.NotFound: pass
 
@@ -205,7 +206,7 @@ class TasksCog(commands.Cog):
             request_embed.add_field(name="마감", value=deadline, inline=True)
             request_embed.add_field(name="내용", value=content, inline=False)
             request_embed.add_field(name="요청자", value=interaction.user.mention, inline=False)
-            request_embed.set_footer(text="승인 후 대시보드에 반영됩니다.")
+            brand_footer(request_embed, "승인 후 대시보드에 반영됩니다.")
 
             target_channel = interaction.channel
             async with self.bot.db.execute("SELECT value FROM config WHERE key='admin_log_channel' AND guild_id=?", (interaction.guild_id,)) as cursor:
@@ -301,7 +302,7 @@ class TasksCog(commands.Cog):
             msg += f"`#{r[0]}` [{r[1]}] {r[3]} · {r[2]}{d_tag}\n"
         
         all_embed = embed(f"{E_TASK}  전체 일정", truncate_discord_text(msg.strip()), color=TASK_COLOR)
-        all_embed.set_footer(text=f"총 {len(tasks_list)}개")
+        brand_footer(all_embed, f"총 {len(tasks_list)}개")
         await interaction.response.send_message(embed=all_embed)
 
     @app_commands.command(name="숙제", description="앞으로 남은 숙제 목록을 D-Day 순으로 보여줍니다.")

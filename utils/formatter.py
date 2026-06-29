@@ -4,7 +4,7 @@ import json
 from utils.ui import (
     SCHEDULE_COLOR, TASK_COLOR, EXAM_COLOR, DIVIDER,
     E_TODAY, E_TASK, E_EXAM, E_CLOCK,
-    dated_embed, embed,
+    dated_embed, embed, brand_footer,
 )
 
 kst = datetime.timezone(datetime.timedelta(hours=9))
@@ -85,6 +85,7 @@ async def get_schedule_message(target_date: datetime.datetime, guild_id: int, db
     item = dated_embed(
         title=f"{E_TODAY}  {target_date.month}월 {target_date.day}일 ({weekday_str})",
         color=SCHEDULE_COLOR,
+        author="학급 브리핑",
     )
     
     now = datetime.datetime.now(kst)
@@ -207,5 +208,5 @@ async def get_task_list_embed(task_type_name: str, guild_id: int, db) -> discord
         content_text += f"`#{r[0]}` {r[2]}\n　　마감 미정\n"
         
     item.description = truncate_discord_text(content_text.strip())
-    item.set_footer(text=f"총 {len(tasks_list)}개 · {DIVIDER}")
+    brand_footer(item, f"총 {len(tasks_list)}개 · {DIVIDER}")
     return item

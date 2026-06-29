@@ -5,6 +5,8 @@ from typing import Any
 
 import discord
 
+from utils.ui import brand_footer
+
 
 kst = datetime.timezone(datetime.timedelta(hours=9))
 
@@ -44,35 +46,35 @@ TEMPLATES: dict[str, dict[str, Any]] = {
     "general": {
         "label": "일반 공지",
         "emoji": "📣",
-        "color": 0x5865F2,
+        "color": 0x6366F1,
         "default_title": "공지 안내",
         "body_label": "공지 내용",
     },
     "performance": {
         "label": "수행평가",
         "emoji": "📌",
-        "color": 0xE67E22,
+        "color": 0xFB923C,
         "default_title": "수행평가 안내",
         "body_label": "수행평가 내용",
     },
     "exam": {
         "label": "시험",
         "emoji": "📝",
-        "color": 0xAD6BEA,
+        "color": 0xA855F7,
         "default_title": "시험 안내",
         "body_label": "시험 범위/안내",
     },
     "materials": {
         "label": "준비물",
         "emoji": "🎒",
-        "color": 0x2EECD6,
+        "color": 0x2DD4BF,
         "default_title": "준비물 안내",
         "body_label": "준비물 안내",
     },
     "schedule": {
         "label": "일정 안내",
         "emoji": "🏫",
-        "color": 0x3498DB,
+        "color": 0x38BDF8,
         "default_title": "일정 안내",
         "body_label": "일정 내용",
     },
@@ -234,7 +236,7 @@ def build_discord_embed(data: dict[str, Any]) -> discord.Embed:
     item = discord.Embed(title=preview["title"], description=preview["description"], color=color)
     for field in preview["fields"]:
         item.add_field(name=field["name"], value=field["value"], inline=False)
-    item.set_footer(text=preview["footer"])
+    brand_footer(item, preview["footer"])
     return item
 
 

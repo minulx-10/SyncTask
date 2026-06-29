@@ -12,7 +12,7 @@ from discord.ext import commands
 from discord.ui import Button, View
 
 from utils.logger import record_log
-from utils.ui import FOOTER_TEXT, SUCCESS_COLOR
+from utils.ui import FOOTER_TEXT, SUCCESS_COLOR, brand_footer
 
 PLATFORMS = {
     "apple": "Apple Music",
@@ -332,7 +332,7 @@ def build_onochu_embed(song: dict, url: str, platform: str, genre_value: str | N
     artwork_url = song.get("artwork_url")
     if artwork_url:
         embed.set_thumbnail(url=artwork_url)
-    embed.set_footer(text=f"랜덤 노래 추천 · {FOOTER_TEXT}")
+    brand_footer(embed, f"랜덤 노래 추천 · {FOOTER_TEXT}")
     return embed
 
 

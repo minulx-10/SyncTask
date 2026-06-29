@@ -8,7 +8,7 @@ from utils.logger import record_log
 from utils.ui import (
     DASHBOARD_COLOR, SETUP_COLOR, MUTED_COLOR, BRAND_COLOR, DIVIDER,
     E_SETTING, E_HELP, E_STAR, E_DASHBOARD, E_OK, E_TASK,
-    embed, ok, warn,
+    embed, brand_footer, ok, warn,
 )
 
 SUPER_ADMINS = [771274777443696650]
@@ -157,7 +157,7 @@ class AdminCog(commands.Cog):
         status_embed.add_field(name="교사용 웹", value=teacher_value, inline=False)
 
         if not class_ok or not dash_ok:
-            status_embed.set_footer(text="💡 /시작 에서 설정 순서를 확인할 수 있습니다.")
+            brand_footer(status_embed, "💡 /시작 에서 설정 순서를 확인할 수 있습니다.")
         await interaction.response.send_message(embed=status_embed, ephemeral=True)
 
     @app_commands.command(name="소개카드", description="채널에 SyncTask 소개 메시지를 게시합니다.")
@@ -253,7 +253,7 @@ class AdminCog(commands.Cog):
             description="\n".join(lines),
             color=SETUP_COLOR,
         )
-        access_embed.set_footer(text=f"총 {len(teachers)}명 · {DIVIDER}")
+        brand_footer(access_embed, f"총 {len(teachers)}명 · {DIVIDER}")
         await interaction.response.send_message(embed=access_embed, ephemeral=True)
 
     @app_commands.command(name="공지작성링크", description="교사용 공지 작성 웹 링크와 설정 상태를 확인합니다.")

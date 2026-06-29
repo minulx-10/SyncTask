@@ -2,13 +2,14 @@ import discord
 from discord.ext import commands, tasks
 from discord import app_commands
 import datetime
+import re
 import holidays
 from utils.logger import record_log
 from utils.formatter import get_schedule_message, parse_exam_dates, normalize_deadline, parse_deadline, truncate_discord_text, kst
 from utils.ui import (
-    EXAM_COLOR, REMINDER_COLOR, SCHEDULE_COLOR, SUCCESS_COLOR, TASK_COLOR, FOOTER_TEXT, DIVIDER,
-    E_EXAM, E_SCHEDULE, E_REMINDER,
-    embed, ok, warn,
+    EXAM_COLOR, REMINDER_COLOR, SCHEDULE_COLOR, SUCCESS_COLOR, TASK_COLOR, MEAL_COLOR, FOOTER_TEXT, DIVIDER,
+    E_EXAM, E_SCHEDULE, E_REMINDER, E_MEAL,
+    embed, brand_footer, ok, warn,
 )
 from core.neis_api import fetch_neis_timetable, fetch_neis_meal, fetch_neis_school_schedule, fetch_neis_exam_dates
 from cogs.admin import SUPER_ADMINS, is_manager_or_admin
@@ -41,6 +42,18 @@ def default_meal_selection(now: datetime.datetime | None = None) -> tuple[dateti
         return target_date, "3"
     return target_date + datetime.timedelta(days=1), "1"
 
+def format_calorie(raw: str | None) -> str | None:
+    """NEIS CAL_INFO('845.0 Kcal')를 '845kcal' 형태로 정규화. 숫자가 없으면 None."""
+    if not raw:
+        return None
+    m = re.search(r"[\d,]+(?:\.\d+)?", raw)
+    if not m:
+        return None
+    value = float(m.group().replace(",", ""))
+    number = int(value) if value == int(value) else round(value, 1)
+    return f"{number}kcal"
+
+
 def format_meal_value(meal: dict | None, limit: int = 1000) -> str:
     if not meal:
         return "등록된 급식 정보가 없습니다."
@@ -51,9 +64,9 @@ def format_meal_value(meal: dict | None, limit: int = 1000) -> str:
     else:
         text = "등록된 메뉴가 없습니다."
 
-    calorie = meal.get("calorie")
+    calorie = format_calorie(meal.get("calorie"))
     if calorie:
-        text += f"\n\n{calorie}"
+        text += f"\n\n*{calorie}*"
     return truncate_discord_text(text, limit)
 
 def build_meal_embed(target_date: datetime.datetime, meal_data: dict, meal_code: str) -> discord.Embed:
@@ -62,15 +75,20 @@ def build_meal_embed(target_date: datetime.datetime, meal_data: dict, meal_code:
 
     if not meal_data:
         item = embed(
-            title=f"🍽️  {date_label} 급식",
-            description="등록된 급식 정보가 없습니다.",
-            color=TASK_COLOR,
+            title=f"{E_MEAL}  {date_label} 급식",
+            description="아직 등록된 급식 정보가 없어요.",
+            color=MEAL_COLOR,
+            author="오늘의 급식",
         )
     elif meal_code == "전체":
-        item = embed(title=f"🍽️  {date_label} 급식", color=TASK_COLOR)
+        item = embed(
+            title=f"{E_MEAL}  {date_label} 급식",
+            color=MEAL_COLOR,
+            author="오늘의 급식",
+        )
         for code in ("1", "2", "3"):
             item.add_field(
-                name=f"{MEAL_EMOJIS[code]} {MEAL_LABELS[code]}",
+                name=f"{MEAL_EMOJIS[code]}　{MEAL_LABELS[code]}",
                 value=format_meal_value(meal_data.get(code)),
                 inline=False,
             )
@@ -78,12 +96,13 @@ def build_meal_embed(target_date: datetime.datetime, meal_data: dict, meal_code:
         label = MEAL_LABELS[meal_code]
         emoji = MEAL_EMOJIS[meal_code]
         item = embed(
-            title=f"{emoji}  {label}",
+            title=f"{emoji}  {date_label} · {label}",
             description=format_meal_value(meal_data.get(meal_code), 3900),
-            color=TASK_COLOR,
+            color=MEAL_COLOR,
+            author="오늘의 급식",
         )
 
-    item.set_footer(text=f"{target_date.strftime('%Y.%m.%d')} ({weekday}) · {FOOTER_TEXT}")
+    brand_footer(item, f"{target_date.strftime('%Y.%m.%d')} ({weekday}) · {FOOTER_TEXT}")
     return item
 
 class SchoolCog(commands.Cog):
@@ -225,7 +244,7 @@ class SchoolCog(commands.Cog):
             value="\n".join(result_lines),
             inline=False,
         )
-        sync_embed.set_footer(text="💡 /시험일정설정 으로 수동 수정도 가능합니다.")
+        brand_footer(sync_embed, "💡 /시험일정설정 으로 수동 수정도 가능합니다.")
         await interaction.followup.send(embed=sync_embed, ephemeral=True)
 
     @app_commands.command(name="시험범위추가", description="과목별 시험 범위를 등록합니다. (일반 유저는 승인 후 등록)")
@@ -267,7 +286,7 @@ class SchoolCog(commands.Cog):
             request_embed.add_field(name="과목", value=subject, inline=True)
             request_embed.add_field(name="범위", value=scope, inline=False)
             request_embed.add_field(name="요청자", value=interaction.user.mention, inline=False)
-            request_embed.set_footer(text="승인 후 시험 범위에 반영됩니다.")
+            brand_footer(request_embed, "승인 후 시험 범위에 반영됩니다.")
 
             target_channel = interaction.channel
             async with self.bot.db.execute("SELECT value FROM config WHERE key='admin_log_channel' AND guild_id=?", (interaction.guild_id,)) as cursor:

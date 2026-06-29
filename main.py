@@ -7,7 +7,7 @@ import datetime
 import aiohttp
 from dotenv import load_dotenv
 from core.database import init_db
-from utils.ui import BOOT_COLOR, E_BOOT, DIVIDER
+from utils.ui import BOOT_COLOR, E_BOOT, DIVIDER, embed as ui_embed, brand_footer, set_brand_assets
 
 load_dotenv()
 kst = datetime.timezone(datetime.timedelta(hours=9))
@@ -79,6 +79,9 @@ class SyncTaskBot(commands.Bot):
     async def on_ready(self):
         # 봇이 완전히 준비될 때까지 잠시 대기
         await asyncio.sleep(5)
+
+        # 모든 임베드가 공유할 브랜드 아이콘(봇 아바타) 등록
+        set_brand_assets(name=self.user.name, icon_url=self.user.display_avatar.url)
         
         if os.getenv("GUILD_SYNC_ON_READY", "1") == "1":
             print("⟳ 서버별 즉시 동기화 진행 중...")
@@ -116,7 +119,7 @@ class SyncTaskBot(commands.Bot):
             try:
                 dashboard_url, is_accessible = await get_dashboard_url()
                 
-                boot_embed = discord.Embed(
+                boot_embed = ui_embed(
                     title=f"{E_BOOT}  SyncTask 가동 완료",
                     color=BOOT_COLOR,
                 )
@@ -148,7 +151,7 @@ class SyncTaskBot(commands.Bot):
                         inline=False,
                     )
 
-                boot_embed.set_footer(text=f"{now_str} KST · {DIVIDER}")
+                brand_footer(boot_embed, f"{now_str} KST · {DIVIDER}")
                 await user.send(embed=boot_embed)
             except Exception:
                 pass
