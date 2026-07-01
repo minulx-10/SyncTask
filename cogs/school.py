@@ -76,7 +76,10 @@ def build_meal_embed(target_date: datetime.datetime, meal_data: dict, meal_code:
     if not meal_data:
         item = embed(
             title=f"{E_MEAL}  {date_label} 급식",
-            description="아직 등록된 급식 정보가 없어요.",
+            description=(
+                "아직 등록된 급식 정보가 없어요.\n"
+                "-# 전남광주통합특별시교육청 시스템 이관으로 인해 급식 정보 제공이 일시 중단되었을 수 있어요."
+            ),
             color=MEAL_COLOR,
             author="오늘의 급식",
         )
