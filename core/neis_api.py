@@ -11,7 +11,7 @@ async def fetch_neis_timetable(date_str: str, grade: str, class_nm: str) -> list
     params = {
         "KEY": os.getenv("NEIS_API_KEY"), 
         "Type": "json", "pIndex": 1, "pSize": 50,
-        "ATPT_OFCDC_SC_CODE": "F10", "SD_SCHUL_CODE": "7380292",  
+        "ATPT_OFCDC_SC_CODE": "F10", "SD_SCHUL_CODE": "7140392",  
         "ALL_TI_YMD": date_str, "GRADE": str(grade), "CLASS_NM": str(class_nm)
     }
     try:
@@ -49,7 +49,7 @@ async def fetch_neis_meal(date_str: str) -> dict:
     url = "https://open.neis.go.kr/hub/mealServiceDietInfo"
     params = {
         "Type": "json", "pIndex": 1, "pSize": 20,
-        "ATPT_OFCDC_SC_CODE": "F10", "SD_SCHUL_CODE": "7380292",
+        "ATPT_OFCDC_SC_CODE": "F10", "SD_SCHUL_CODE": "7140392",
         "MLSV_YMD": date_str,
     }
     api_key = os.getenv("NEIS_API_KEY")
@@ -94,7 +94,7 @@ async def fetch_neis_school_schedule(start_date: str, end_date: str) -> list:
     params = {
         "KEY": os.getenv("NEIS_API_KEY"),
         "Type": "json", "pIndex": 1, "pSize": 100,
-        "ATPT_OFCDC_SC_CODE": "F10", "SD_SCHUL_CODE": "7380292",  # 광주소프트웨어마이스터고
+        "ATPT_OFCDC_SC_CODE": "F10", "SD_SCHUL_CODE": "7140392",  # 광주소프트웨어마이스터고
         "AA_FROM_YMD": start_date, "AA_TO_YMD": end_date
     }
     try:
@@ -163,7 +163,7 @@ async def fetch_neis_exam_dates(year: int, month: int = None) -> dict:
     params = {
         "KEY": os.getenv("NEIS_API_KEY"),
         "Type": "json", "pIndex": 1, "pSize": 500,
-        "ATPT_OFCDC_SC_CODE": "F10", "SD_SCHUL_CODE": "7380292",
+        "ATPT_OFCDC_SC_CODE": "F10", "SD_SCHUL_CODE": "7140392",
         "AA_FROM_YMD": start_date, "AA_TO_YMD": end_date
     }
 
