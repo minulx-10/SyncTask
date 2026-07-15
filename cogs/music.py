@@ -12,7 +12,7 @@ from discord.ext import commands
 from discord.ui import Button, View
 
 from utils.logger import record_log
-from utils.ui import FOOTER_TEXT, SUCCESS_COLOR, brand_footer
+from utils.ui import FOOTER_TEXT, SUCCESS_COLOR, brand_author, brand_footer
 
 PLATFORMS = {
     "apple": "Apple Music",
@@ -20,6 +20,14 @@ PLATFORMS = {
     "melon": "Melon",
     "bugs": "Bugs",
     "youtube": "YouTube Music",
+}
+
+PLATFORM_EMOJI = {
+    "apple": "🍎",
+    "spotify": "🟢",
+    "melon": "🍈",
+    "bugs": "🐞",
+    "youtube": "▶️",
 }
 
 PLATFORM_CHOICES = [
@@ -87,6 +95,18 @@ def bigger_artwork_url(url: str | None) -> str | None:
     return url.replace("100x100bb", "600x600bb").replace("100x100", "600x600")
 
 
+def format_duration(millis: int | None) -> str | None:
+    if not millis:
+        return None
+    total = int(millis // 1000)
+    return f"{total // 60}:{total % 60:02d}"
+
+
+def release_year(date_str: str | None) -> str | None:
+    match = re.match(r"(\d{4})", date_str or "")
+    return match.group(1) if match else None
+
+
 def platform_label(platform_key: str | None) -> str:
     return PLATFORMS.get(platform_key or "", "Apple Music")
 
@@ -137,7 +157,7 @@ async def fetch_apple_chart(session: aiohttp.ClientSession) -> list[dict]:
         if not title or not artist:
             continue
         genres = item.get("genres") or []
-        genre = clean_text((genres[0] or {}).get("name")) if genres else "Apple Music"
+        genre = clean_text((genres[0] or {}).get("name")) if genres else ""
         songs.append({
             "platform": "apple",
             "title": title,
@@ -203,6 +223,46 @@ async def random_chart_song(genre_value: str | None = None, previous_key: str | 
         
     item = pick_random_candidate(filtered, previous_key)
     return item, is_filtered
+
+
+async def enrich_from_itunes(session: aiohttp.ClientSession, title: str, artist: str) -> dict:
+    """iTunes 검색 API로 앨범·장르·발매연도·재생시간·고화질 아트워크를 보강한다.
+
+    차트 RSS 피드에는 앨범 정보가 없어, 곡 단위로 한 번 더 조회해 채워 넣는다.
+    실패하면 빈 dict를 반환해 호출측이 있는 정보만 표시하도록 한다.
+    """
+    data = await fetch_json(
+        session,
+        "https://itunes.apple.com/search",
+        params={
+            "term": f"{artist} {title}",
+            "country": "KR",
+            "media": "music",
+            "entity": "song",
+            "limit": 5,
+        },
+    )
+    results = (data or {}).get("results") or []
+    if not results:
+        return {}
+
+    title_lower = title.lower()
+    artist_lower = artist.lower()
+    best = results[0]
+    for item in results:
+        if title_lower in (item.get("trackName") or "").lower() and artist_lower in (item.get("artistName") or "").lower():
+            best = item
+            break
+
+    return {
+        "album": clean_text(best.get("collectionName")) or None,
+        "genre": clean_text(best.get("primaryGenreName")) or None,
+        "artwork_url": bigger_artwork_url(best.get("artworkUrl100")),
+        "duration": format_duration(best.get("trackTimeMillis")),
+        "year": release_year(best.get("releaseDate")),
+        "explicit": best.get("trackExplicitness") == "explicit",
+        "apple_url": best.get("trackViewUrl"),
+    }
 
 
 async def resolve_apple_track(session: aiohttp.ClientSession, title: str, artist: str) -> str:
@@ -309,31 +369,102 @@ async def resolve_spotify_track(session: aiohttp.ClientSession, title: str, arti
 def build_onochu_embed(song: dict, url: str, platform: str, genre_value: str | None = None, is_filtered: bool = True) -> discord.Embed:
     title = song["title"]
     artist = song["artist"]
-    album = song.get("album") or "앨범 정보 없음"
-    genre = song.get("genre") or "기타"
-
     embed_color = GENRE_COLORS.get(genre_value or "", SUCCESS_COLOR)
 
-    desc = f"**{artist}**\n\n💿 **앨범**: {album}\n🏷️ **장르**: {genre}\n\n"
-    if genre_value:
-        if is_filtered:
-            desc += f"✨ 선택하신 **{genre_label(genre_value)}** 장르의 인기 추천곡입니다!"
-        else:
-            desc += f"⚠️ 차트에 **{genre_label(genre_value)}** 장르의 곡이 없어 전체 인기곡 중 추천합니다."
-    else:
-        desc += "🎵 오늘의 인기 추천곡입니다!"
+    title_text = f"{title}  🅴" if song.get("explicit") else title
+    embed = discord.Embed(title=title_text, url=url, description=f"**{artist}**", color=embed_color)
+    brand_author(embed, "🎵 오노추 · 오늘의 노래 추천")
 
-    embed = discord.Embed(
-        title=title,
-        url=url,
-        description=desc,
-        color=embed_color,
-    )
-    artwork_url = song.get("artwork_url")
-    if artwork_url:
-        embed.set_thumbnail(url=artwork_url)
-    brand_footer(embed, f"랜덤 노래 추천 · {FOOTER_TEXT}")
+    # 있는 정보만 필드로 표시한다. (없는 값을 "정보 없음"으로 채우지 않는다)
+    if song.get("album"):
+        embed.add_field(name="💿 앨범", value=song["album"], inline=False)
+    if song.get("genre"):
+        embed.add_field(name="🏷️ 장르", value=song["genre"], inline=True)
+    if song.get("year"):
+        embed.add_field(name="🗓️ 발매", value=song["year"], inline=True)
+    if song.get("duration"):
+        embed.add_field(name="⏱️ 재생시간", value=song["duration"], inline=True)
+
+    # 장르 필터 결과가 비어 전체 차트로 대체된 경우에만 안내한다.
+    if genre_value and not is_filtered:
+        embed.add_field(
+            name="ℹ️ 안내",
+            value=f"차트에 **{genre_label(genre_value)}** 곡이 없어 전체 인기곡에서 골랐어요.",
+            inline=False,
+        )
+
+    if song.get("artwork_url"):
+        embed.set_thumbnail(url=song["artwork_url"])
+
+    brand_footer(embed, f"{platform_label(platform)}에서 듣기 · {FOOTER_TEXT}")
     return embed
+
+
+class RerollButton(Button):
+    def __init__(self):
+        super().__init__(label="다른 곡", emoji="🔄", style=discord.ButtonStyle.secondary)
+
+    async def callback(self, interaction: discord.Interaction):
+        await self.view.handle_reroll(interaction)
+
+
+class OnochuView(View):
+    """듣기 링크 + '다른 곡' 재추천 버튼을 가진 오노추 전용 뷰."""
+
+    def __init__(self, cog, guild_id: int, requester_id: int, platform: str, genre_value: str | None, track_url: str):
+        super().__init__(timeout=300)
+        self.cog = cog
+        self.guild_id = guild_id
+        self.requester_id = requester_id
+        self.platform = platform
+        self.genre_value = genre_value
+        self.message: discord.Message | None = None
+
+        self.add_item(Button(
+            label=f"{platform_label(platform)}에서 듣기",
+            emoji=PLATFORM_EMOJI.get(platform),
+            style=discord.ButtonStyle.link,
+            url=track_url,
+        ))
+        self.add_item(RerollButton())
+
+    async def handle_reroll(self, interaction: discord.Interaction):
+        if interaction.user.id != self.requester_id:
+            await interaction.response.send_message(
+                "🔒 이 추천을 요청한 사람만 다시 추천할 수 있어요.", ephemeral=True
+            )
+            return
+
+        await interaction.response.defer()
+        result = await self.cog.prepare_recommendation(
+            self.guild_id, self.requester_id, self.platform, self.genre_value
+        )
+        if not result:
+            await interaction.followup.send(
+                "⚠️ 곡을 다시 불러오지 못했어요. 잠시 후 다시 시도해주세요.", ephemeral=True
+            )
+            return
+
+        embed, track_url = result
+        new_view = OnochuView(
+            self.cog, self.guild_id, self.requester_id, self.platform, self.genre_value, track_url
+        )
+        new_view.message = self.message
+        self.stop()  # 이전 뷰의 타임아웃이 새 뷰를 덮어쓰지 않도록 중단
+        await interaction.edit_original_response(embed=embed, view=new_view)
+
+    async def on_timeout(self):
+        # 링크 버튼은 상호작용 없이도 동작하므로 그대로 두고, 재추천만 비활성화한다.
+        changed = False
+        for child in self.children:
+            if getattr(child, "style", None) != discord.ButtonStyle.link and not child.disabled:
+                child.disabled = True
+                changed = True
+        if changed and self.message:
+            try:
+                await self.message.edit(view=self)
+            except discord.HTTPException:
+                pass
 
 
 class MusicCog(commands.Cog):
@@ -380,41 +511,57 @@ class MusicCog(commands.Cog):
         )
         await self.bot.db.commit()
 
-    async def send_onochu(self, interaction: discord.Interaction, platform: str, genre_value: str | None = None):
-        guild_id = interaction.guild_id or 0
-        previous_key = await self.get_last_song_key(guild_id, interaction.user.id)
-        source_song, is_filtered = await random_chart_song(genre_value, previous_key)
-        if not source_song:
-            await interaction.followup.send("⚠️ 랜덤 곡 후보를 가져오지 못했습니다. 잠시 후 다시 시도해주세요.")
-            return
+    async def prepare_recommendation(
+        self, guild_id: int, user_id: int, platform: str, genre_value: str | None = None
+    ) -> tuple[discord.Embed, str] | None:
+        """곡을 뽑고 메타데이터를 보강한 뒤 임베드와 재생 링크를 만들어 반환한다.
 
-        seed_title = source_song["title"]
-        seed_artist = source_song["artist"]
-        await self.set_last_song_key(guild_id, interaction.user.id, song_key(seed_title, seed_artist))
+        후보를 못 가져오면 None. 최초 추천과 '다른 곡' 재추천이 공유하는 로직.
+        """
+        previous_key = await self.get_last_song_key(guild_id, user_id)
+        picked, is_filtered = await random_chart_song(genre_value, previous_key)
+        if not picked:
+            return None
+
+        # 캐시된 차트 dict를 직접 건드리지 않도록 사본에 보강 정보를 얹는다.
+        song = dict(picked)
+        title = song["title"]
+        artist = song["artist"]
+        await self.set_last_song_key(guild_id, user_id, song_key(title, artist))
 
         timeout = aiohttp.ClientTimeout(total=8)
         async with aiohttp.ClientSession(headers=HTTP_HEADERS, timeout=timeout) as session:
+            meta = await enrich_from_itunes(session, title, artist)
+            for field in ("album", "genre", "artwork_url", "duration", "year"):
+                if meta.get(field):
+                    song[field] = meta[field]
+            song["explicit"] = meta.get("explicit", False)
+
             if platform == "melon":
-                track_url = await resolve_melon_track(session, seed_title, seed_artist)
+                track_url = await resolve_melon_track(session, title, artist)
             elif platform == "bugs":
-                track_url = await resolve_bugs_track(session, seed_title, seed_artist)
+                track_url = await resolve_bugs_track(session, title, artist)
             elif platform == "spotify":
-                track_url = await resolve_spotify_track(session, seed_title, seed_artist)
+                track_url = await resolve_spotify_track(session, title, artist)
             elif platform == "youtube":
-                track_url = await resolve_youtube_track(session, seed_title, seed_artist)
+                track_url = await resolve_youtube_track(session, title, artist)
             else:
-                track_url = source_song.get("url") or await resolve_apple_track(session, seed_title, seed_artist)
+                track_url = meta.get("apple_url") or song.get("url") or await resolve_apple_track(session, title, artist)
 
-        embed = build_onochu_embed(source_song, track_url, platform, genre_value, is_filtered)
-        
-        view = View(timeout=180)
-        view.add_item(Button(
-            label=f"{platform_label(platform)} 바로가기",
-            style=discord.ButtonStyle.link,
-            url=track_url
-        ))
+        embed = build_onochu_embed(song, track_url, platform, genre_value, is_filtered)
+        return embed, track_url
 
-        await interaction.followup.send(embed=embed, view=view)
+    async def send_onochu(self, interaction: discord.Interaction, platform: str, genre_value: str | None = None):
+        guild_id = interaction.guild_id or 0
+        result = await self.prepare_recommendation(guild_id, interaction.user.id, platform, genre_value)
+        if not result:
+            await interaction.followup.send("⚠️ 랜덤 곡 후보를 가져오지 못했습니다. 잠시 후 다시 시도해주세요.")
+            return
+
+        embed, track_url = result
+        view = OnochuView(self, guild_id, interaction.user.id, platform, genre_value, track_url)
+        message = await interaction.followup.send(embed=embed, view=view, wait=True)
+        view.message = message
 
     @app_commands.command(name="오노추", description="랜덤으로 노래를 추천합니다. 저장된 음악 플랫폼의 링크를 표시합니다.")
     @app_commands.describe(

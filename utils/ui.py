@@ -71,6 +71,12 @@ def brand_footer(item: discord.Embed, text: str = FOOTER_TEXT) -> discord.Embed:
     return item
 
 
+def brand_author(item: discord.Embed, name: str) -> discord.Embed:
+    """임베드 상단 작성자 줄에 브랜드 아이콘과 카테고리 라벨을 붙인다."""
+    item.set_author(name=name, icon_url=_BRAND_ICON)
+    return item
+
+
 # ── Embed Builders ────────────────────────────
 
 def embed(
